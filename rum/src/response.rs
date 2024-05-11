@@ -12,7 +12,7 @@ use std::sync::Arc;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct ErrorBody {
     /// The error message.
-    err: String,
+    error: String,
 }
 
 impl ErrorBody {
@@ -22,7 +22,7 @@ impl ErrorBody {
         S: Display,
     {
         Self {
-            err: err.to_string(),
+            error: err.to_string(),
         }
     }
 

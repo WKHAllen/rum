@@ -49,7 +49,7 @@ async fn test() {
     });
 
     Server::new()
-        .route_group("/api/v1", RouteGroup::new().get("/greet", greet))
+        .route_group(RouteGroup::new("/api/v1").get("/greet", greet))
         .with_state(Counter::default())
         .with_graceful_shutdown(shutdown_receiver)
         .serve(addr)

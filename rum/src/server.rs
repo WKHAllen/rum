@@ -160,11 +160,8 @@ impl Server {
     }
 
     /// Registers a group of routes.
-    pub fn route_group<P>(mut self, path: P, route_group: RouteGroup) -> Self
-    where
-        P: Into<RoutePath>,
-    {
-        let path = path.into();
+    pub fn route_group(mut self, route_group: RouteGroup) -> Self {
+        let path = route_group.path();
         route_group
             .into_iter()
             .for_each(|((method, inner_path), route)| {

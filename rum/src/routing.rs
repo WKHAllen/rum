@@ -129,13 +129,29 @@ where
 }
 
 /// A group of routes under a given path.
-#[derive(Clone, Default)]
-pub struct RouteGroup(HashMap<(HttpMethod, RoutePath), Route>);
+#[derive(Clone)]
+pub struct RouteGroup {
+    /// The path of the route group.
+    path: RoutePath,
+    /// The collection of routes within the group.
+    routes: HashMap<(HttpMethod, RoutePath), Route>,
+}
 
 impl RouteGroup {
     /// Creates a new empty route group.
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new<P>(path: P) -> Self
+    where
+        P: Into<RoutePath>,
+    {
+        Self {
+            path: path.into(),
+            routes: HashMap::new(),
+        }
+    }
+
+    /// Returns the path of this route group.
+    pub fn path(&self) -> RoutePath {
+        self.path.clone()
     }
 
     /// Registers a route within the route group.
@@ -144,7 +160,7 @@ impl RouteGroup {
         P: Into<RoutePath>,
         R: Into<Route>,
     {
-        self.0.insert((method, path.into()), route.into());
+        self.routes.insert((method, path.into()), route.into());
         self
     }
 
@@ -157,7 +173,7 @@ impl RouteGroup {
         route_group
             .into_iter()
             .for_each(|((method, inner_path), route)| {
-                self.0.insert((method, path.join(inner_path)), route);
+                self.routes.insert((method, path.join(inner_path)), route);
             });
         self
     }
@@ -245,12 +261,12 @@ impl RouteGroup {
 
     /// Returns an iterator over all routes.
     pub fn iter(&self) -> MapIter<'_, (HttpMethod, RoutePath), Route> {
-        self.0.iter()
+        self.routes.iter()
     }
 
     /// Returns a mutable iterator over all routes.
     pub fn iter_mut(&mut self) -> MapIterMut<'_, (HttpMethod, RoutePath), Route> {
-        self.0.iter_mut()
+        self.routes.iter_mut()
     }
 }
 
@@ -277,12 +293,6 @@ impl IntoIterator for RouteGroup {
     type IntoIter = MapIntoIter<(HttpMethod, RoutePath), Route>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
-    }
-}
-
-impl FromIterator<((HttpMethod, RoutePath), Route)> for RouteGroup {
-    fn from_iter<T: IntoIterator<Item = ((HttpMethod, RoutePath), Route)>>(iter: T) -> Self {
-        Self(iter.into_iter().collect())
+        self.routes.into_iter()
     }
 }
