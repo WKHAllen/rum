@@ -1,3 +1,9 @@
+//! Macros for the Rum crate.
+
+#![forbid(unsafe_code)]
+#![warn(missing_docs)]
+#![warn(clippy::missing_docs_in_private_items)]
+
 use proc_macro::TokenStream;
 use proc_macro_crate::{crate_name, FoundCrate};
 use quote::{format_ident, quote, ToTokens};
@@ -5,6 +11,7 @@ use syn::parse::Parser;
 use syn::punctuated::Punctuated;
 use syn::{parse_macro_input, Block, FnArg, ItemFn, ReturnType, Token};
 
+/// Transforms a function such that it can be used as a Rum route handler.
 #[proc_macro_attribute]
 pub fn handler(_: TokenStream, item: TokenStream) -> TokenStream {
     let mut fn_item = parse_macro_input!(item as ItemFn);

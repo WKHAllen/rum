@@ -19,12 +19,16 @@ struct GreetingRequest {
 struct GreetingResponse {
     message: String,
     count: usize,
+    my_query: String,
+    my_query_opt: Option<String>,
 }
 
 #[handler]
 async fn greet(
     greeting_request: Json<GreetingRequest>,
     state: State<Counter>,
+    my_query: Query<"my_query">,
+    my_query_opt: QueryOptional<"my_query_opt">,
 ) -> Json<GreetingResponse> {
     let count = {
         let mut counter = state.count.lock().await;
@@ -35,6 +39,8 @@ async fn greet(
     Json(GreetingResponse {
         message: format!("Hello, {}!", greeting_request.name),
         count,
+        my_query: my_query.into_inner(),
+        my_query_opt: my_query_opt.into_inner(),
     })
 }
 

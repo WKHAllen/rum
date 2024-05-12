@@ -195,3 +195,59 @@ where
         &mut self.0
     }
 }
+
+/// A single required query parameter.
+#[cfg(feature = "nightly")]
+pub struct Query<const Q: &'static str>(pub(crate) String);
+
+#[cfg(feature = "nightly")]
+impl<const Q: &'static str> Query<Q> {
+    /// Moves the query value out of this wrapper.
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<const Q: &'static str> Deref for Query<Q> {
+    type Target = String;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<const Q: &'static str> DerefMut for Query<Q> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+/// A single optional query parameter.
+#[cfg(feature = "nightly")]
+pub struct QueryOptional<const Q: &'static str>(pub(crate) Option<String>);
+
+#[cfg(feature = "nightly")]
+impl<const Q: &'static str> QueryOptional<Q> {
+    /// Moves the query value out of this wrapper.
+    pub fn into_inner(self) -> Option<String> {
+        self.0
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<const Q: &'static str> Deref for QueryOptional<Q> {
+    type Target = Option<String>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<const Q: &'static str> DerefMut for QueryOptional<Q> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}

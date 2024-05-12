@@ -5,6 +5,8 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 #![warn(clippy::missing_docs_in_private_items)]
+#![allow(incomplete_features)]
+#![cfg_attr(feature = "nightly", feature(adt_const_params))]
 
 pub mod body;
 pub mod error;
@@ -24,6 +26,8 @@ pub mod prelude {
     pub use crate::body::{BodyRaw, Json};
     pub use crate::headers::{HeaderMap, Headers};
     pub use crate::http::{HttpMethod, StatusCode};
+    #[cfg(feature = "nightly")]
+    pub use crate::query::{Query, QueryOptional};
     pub use crate::query::{QueryParamMap, QueryParams};
     pub use crate::request::FromRequest;
     pub use crate::response::{IntoResponse, ServerResponse};

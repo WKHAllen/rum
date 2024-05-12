@@ -361,6 +361,7 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
+ "rum",
  "rum-macros",
  "serde",
  "serde_json",

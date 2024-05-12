@@ -4,6 +4,8 @@ use crate::body::{BodyRaw, Json};
 use crate::error::{Error, Result};
 use crate::headers::{HeaderMap, Headers};
 use crate::http::HttpMethod;
+#[cfg(feature = "nightly")]
+use crate::query::{Query, QueryOptional};
 use crate::query::{QueryParamMap, QueryParams};
 use crate::routing::RoutePath;
 use crate::state::{State, StateManager};
@@ -144,6 +146,20 @@ where
         Ok(Self(serde_json::from_value(serde_json::to_value(
             &req.query.0,
         )?)?))
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<const Q: &'static str> FromRequest for Query<Q> {
+    fn from_request(req: &ServerRequest) -> Result<Self> {
+        Ok(Query(req.query_required(Q)?.to_owned()))
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<const Q: &'static str> FromRequest for QueryOptional<Q> {
+    fn from_request(req: &ServerRequest) -> Result<Self> {
+        Ok(QueryOptional(req.query_optional(Q).map(ToOwned::to_owned)))
     }
 }
 
