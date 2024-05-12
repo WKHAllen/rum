@@ -40,10 +40,12 @@ impl From<&str> for QueryParamMapInner {
             .filter_map(|query| {
                 let mut query_iter = query.split('=');
                 let name = query_iter.next();
-                let value = query_iter.next();
+                let value = query_iter
+                    .next()
+                    .and_then(|value| urlencoding::decode(value).ok());
 
                 match (name, value) {
-                    (Some(name), Some(value)) => Some((name.to_owned(), value.to_owned())),
+                    (Some(name), Some(value)) => Some((name.to_owned(), value.into_owned())),
                     _ => None,
                 }
             })
