@@ -21,6 +21,8 @@ struct GreetingResponse {
     count: usize,
     my_query: String,
     my_query_opt: Option<String>,
+    my_header: String,
+    my_header_opt: Option<String>,
 }
 
 #[handler]
@@ -29,6 +31,8 @@ async fn greet(
     state: State<Counter>,
     my_query: Query<"my_query">,
     my_query_opt: QueryOptional<"my_query_opt">,
+    my_header: Header<"my_header">,
+    my_header_opt: HeaderOptional<"my_header_opt">,
 ) -> Json<GreetingResponse> {
     let count = {
         let mut counter = state.count.lock().await;
@@ -41,6 +45,8 @@ async fn greet(
         count,
         my_query: my_query.into_inner(),
         my_query_opt: my_query_opt.into_inner(),
+        my_header: my_header.into_inner(),
+        my_header_opt: my_header_opt.into_inner(),
     })
 }
 

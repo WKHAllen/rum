@@ -39,7 +39,7 @@ where
 {
     fn from(value: Option<T>) -> Self {
         match value {
-            Some(query) => query.into(),
+            Some(header) => header.into(),
             None => Self::default(),
         }
     }
@@ -162,6 +162,62 @@ where
     T: DeserializeOwned,
 {
     fn borrow_mut(&mut self) -> &mut T {
+        &mut self.0
+    }
+}
+
+/// A single required request header.
+#[cfg(feature = "nightly")]
+pub struct Header<const Q: &'static str>(pub(crate) String);
+
+#[cfg(feature = "nightly")]
+impl<const Q: &'static str> Header<Q> {
+    /// Moves the header value out of this wrapper.
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<const Q: &'static str> Deref for Header<Q> {
+    type Target = String;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<const Q: &'static str> DerefMut for Header<Q> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+/// A single optional request header.
+#[cfg(feature = "nightly")]
+pub struct HeaderOptional<const Q: &'static str>(pub(crate) Option<String>);
+
+#[cfg(feature = "nightly")]
+impl<const Q: &'static str> HeaderOptional<Q> {
+    /// Moves the header value out of this wrapper.
+    pub fn into_inner(self) -> Option<String> {
+        self.0
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<const Q: &'static str> Deref for HeaderOptional<Q> {
+    type Target = Option<String>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<const Q: &'static str> DerefMut for HeaderOptional<Q> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }

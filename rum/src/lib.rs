@@ -10,7 +10,7 @@
 
 pub mod body;
 pub mod error;
-pub mod headers;
+pub mod header;
 pub mod http;
 pub mod query;
 pub mod request;
@@ -24,7 +24,9 @@ mod typemap;
 /// the crate.
 pub mod prelude {
     pub use crate::body::{BodyRaw, Json};
-    pub use crate::headers::{HeaderMap, Headers};
+    #[cfg(feature = "nightly")]
+    pub use crate::header::{Header, HeaderOptional};
+    pub use crate::header::{HeaderMap, Headers};
     pub use crate::http::{HttpMethod, StatusCode};
     #[cfg(feature = "nightly")]
     pub use crate::query::{Query, QueryOptional};

@@ -2,7 +2,9 @@
 
 use crate::body::{BodyRaw, Json};
 use crate::error::{Error, Result};
-use crate::headers::{HeaderMap, Headers};
+#[cfg(feature = "nightly")]
+use crate::header::{Header, HeaderOptional};
+use crate::header::{HeaderMap, Headers};
 use crate::http::HttpMethod;
 #[cfg(feature = "nightly")]
 use crate::query::{Query, QueryOptional};
@@ -177,6 +179,22 @@ where
         Ok(Self(serde_json::from_value(serde_json::to_value(
             &req.headers.0,
         )?)?))
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<const Q: &'static str> FromRequest for Header<Q> {
+    fn from_request(req: &ServerRequest) -> Result<Self> {
+        Ok(Header(req.header_required(Q)?.to_owned()))
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<const Q: &'static str> FromRequest for HeaderOptional<Q> {
+    fn from_request(req: &ServerRequest) -> Result<Self> {
+        Ok(HeaderOptional(
+            req.header_optional(Q).map(ToOwned::to_owned),
+        ))
     }
 }
 
