@@ -13,7 +13,7 @@ use crate::routing::RoutePath;
 use crate::state::{State, StateManager};
 use http_body_util::BodyExt;
 use hyper::body::Incoming;
-use hyper::Request;
+use hyper::Request as HyperRequest;
 use serde::de::DeserializeOwned;
 use std::any::type_name;
 use std::sync::Arc;
@@ -21,7 +21,7 @@ use std::sync::Arc;
 /// An HTTP request. Typically, direct interaction with this type is
 /// discouraged. Users are encouraged to use extractors instead.
 #[derive(Debug)]
-pub struct ServerRequest {
+pub struct Request {
     /// The raw request body.
     body: Arc<[u8]>,
     /// The request method.
@@ -36,9 +36,9 @@ pub struct ServerRequest {
     state: StateManager,
 }
 
-impl ServerRequest {
+impl Request {
     /// Attempts to parse a [`hyper::Request`] into `Self`.
-    pub(crate) async fn new(req: Request<Incoming>, state: StateManager) -> Result<Self> {
+    pub(crate) async fn new(req: HyperRequest<Incoming>, state: StateManager) -> Result<Self> {
         let (head, body) = req.into_parts();
 
         Ok(Self {
@@ -104,11 +104,11 @@ impl ServerRequest {
 /// A trait for defining which types can be used as HTTP request extractors.
 pub trait FromRequest: Sized {
     /// Performs the extraction from a request.
-    fn from_request(req: &ServerRequest) -> Result<Self>;
+    fn from_request(req: &Request) -> Result<Self>;
 }
 
 impl FromRequest for BodyRaw {
-    fn from_request(req: &ServerRequest) -> Result<Self> {
+    fn from_request(req: &Request) -> Result<Self> {
         Ok(Self(Arc::clone(&req.body)))
     }
 }
@@ -117,25 +117,25 @@ impl<T> FromRequest for Json<T>
 where
     T: DeserializeOwned,
 {
-    fn from_request(req: &ServerRequest) -> Result<Self> {
+    fn from_request(req: &Request) -> Result<Self> {
         Ok(Self(serde_json::from_slice(&req.body)?))
     }
 }
 
 impl FromRequest for HttpMethod {
-    fn from_request(req: &ServerRequest) -> Result<Self> {
+    fn from_request(req: &Request) -> Result<Self> {
         Ok(req.method)
     }
 }
 
 impl FromRequest for RoutePath {
-    fn from_request(req: &ServerRequest) -> Result<Self> {
+    fn from_request(req: &Request) -> Result<Self> {
         Ok(req.path.clone())
     }
 }
 
 impl FromRequest for QueryParamMap {
-    fn from_request(req: &ServerRequest) -> Result<Self> {
+    fn from_request(req: &Request) -> Result<Self> {
         Ok(req.query.clone())
     }
 }
@@ -144,7 +144,7 @@ impl<T> FromRequest for QueryParams<T>
 where
     T: DeserializeOwned,
 {
-    fn from_request(req: &ServerRequest) -> Result<Self> {
+    fn from_request(req: &Request) -> Result<Self> {
         Ok(Self(serde_json::from_value(serde_json::to_value(
             &req.query.0,
         )?)?))
@@ -153,20 +153,20 @@ where
 
 #[cfg(feature = "nightly")]
 impl<const Q: &'static str> FromRequest for Query<Q> {
-    fn from_request(req: &ServerRequest) -> Result<Self> {
+    fn from_request(req: &Request) -> Result<Self> {
         Ok(Query(req.query_required(Q)?.to_owned()))
     }
 }
 
 #[cfg(feature = "nightly")]
 impl<const Q: &'static str> FromRequest for QueryOptional<Q> {
-    fn from_request(req: &ServerRequest) -> Result<Self> {
+    fn from_request(req: &Request) -> Result<Self> {
         Ok(QueryOptional(req.query_optional(Q).map(ToOwned::to_owned)))
     }
 }
 
 impl FromRequest for HeaderMap {
-    fn from_request(req: &ServerRequest) -> Result<Self> {
+    fn from_request(req: &Request) -> Result<Self> {
         Ok(req.headers.clone())
     }
 }
@@ -175,7 +175,7 @@ impl<T> FromRequest for Headers<T>
 where
     T: DeserializeOwned,
 {
-    fn from_request(req: &ServerRequest) -> Result<Self> {
+    fn from_request(req: &Request) -> Result<Self> {
         Ok(Self(serde_json::from_value(serde_json::to_value(
             &req.headers.0,
         )?)?))
@@ -184,14 +184,14 @@ where
 
 #[cfg(feature = "nightly")]
 impl<const Q: &'static str> FromRequest for Header<Q> {
-    fn from_request(req: &ServerRequest) -> Result<Self> {
+    fn from_request(req: &Request) -> Result<Self> {
         Ok(Header(req.header_required(Q)?.to_owned()))
     }
 }
 
 #[cfg(feature = "nightly")]
 impl<const Q: &'static str> FromRequest for HeaderOptional<Q> {
-    fn from_request(req: &ServerRequest) -> Result<Self> {
+    fn from_request(req: &Request) -> Result<Self> {
         Ok(HeaderOptional(
             req.header_optional(Q).map(ToOwned::to_owned),
         ))
@@ -202,7 +202,7 @@ impl<T> FromRequest for State<T>
 where
     T: Clone + 'static,
 {
-    fn from_request(req: &ServerRequest) -> Result<Self> {
+    fn from_request(req: &Request) -> Result<Self> {
         match req.state.get_cloned::<T>() {
             Some(state) => Ok(State(state)),
             None => Err(Error::UnknownStateTypeError(type_name::<T>())),

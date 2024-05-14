@@ -1,8 +1,8 @@
 //! Types involving request routing.
 
 use crate::http::HttpMethod;
-use crate::request::ServerRequest;
-use crate::response::ServerResponse;
+use crate::request::Request;
+use crate::response::Response;
 use std::borrow::Borrow;
 use std::collections::hash_map::{IntoIter as MapIntoIter, Iter as MapIter, IterMut as MapIterMut};
 use std::collections::HashMap;
@@ -97,31 +97,29 @@ impl FromIterator<String> for RoutePath {
 #[allow(clippy::type_complexity)]
 #[derive(Clone)]
 pub struct Route(
-    Arc<
-        dyn Fn(ServerRequest) -> Pin<Box<dyn Future<Output = ServerResponse> + Send>> + Send + Sync,
-    >,
+    Arc<dyn Fn(Request) -> Pin<Box<dyn Future<Output = Response> + Send>> + Send + Sync>,
 );
 
 impl Route {
     /// Creates a new route handler from the provided function.
     fn new<F, Fut>(route: F) -> Self
     where
-        F: Fn(ServerRequest) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = ServerResponse> + Send + 'static,
+        F: Fn(Request) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Response> + Send + 'static,
     {
         Self(Arc::new(move |req| Box::pin(route(req))))
     }
 
     /// Calls the handler.
-    pub(crate) async fn call(&self, req: ServerRequest) -> ServerResponse {
+    pub(crate) async fn call(&self, req: Request) -> Response {
         (self.0)(req).await
     }
 }
 
 impl<F, Fut> From<F> for Route
 where
-    F: Fn(ServerRequest) -> Fut + Send + Sync + 'static,
-    Fut: Future<Output = ServerResponse> + Send + 'static,
+    F: Fn(Request) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = Response> + Send + 'static,
 {
     fn from(value: F) -> Self {
         Self::new(value)

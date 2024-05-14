@@ -69,7 +69,7 @@ pub fn handler(_: TokenStream, item: TokenStream) -> TokenStream {
         ReturnType::Type(_, ty) => quote! { #ty },
     };
 
-    let new_args = quote! { req: #main_crate::request::ServerRequest };
+    let new_args = quote! { req: #main_crate::request::Request };
     let new_block = quote! {
         {
             let ( #(#arg_idents),* ): ( #(#arg_types),* ) = match (move || -> #main_crate::error::Result<( #(#arg_types),* )> {
@@ -77,7 +77,7 @@ pub fn handler(_: TokenStream, item: TokenStream) -> TokenStream {
             })() {
                 Ok(args) => args,
                 Err(err) => {
-                    return #main_crate::response::ServerResponse::new_error(err);
+                    return #main_crate::response::Response::new_error(err);
                 },
             };
             let res: #return_type = async move #body.await;
@@ -86,7 +86,7 @@ pub fn handler(_: TokenStream, item: TokenStream) -> TokenStream {
     }
     .into();
     let new_return = quote! {
-        -> #main_crate::response::ServerResponse
+        -> #main_crate::response::Response
     }
     .into();
 

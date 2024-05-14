@@ -31,8 +31,8 @@ pub mod prelude {
     #[cfg(feature = "nightly")]
     pub use crate::query::{Query, QueryOptional};
     pub use crate::query::{QueryParamMap, QueryParams};
-    pub use crate::request::FromRequest;
-    pub use crate::response::{IntoResponse, ServerResponse};
+    pub use crate::request::{FromRequest, Request};
+    pub use crate::response::{IntoResponse, Response};
     pub use crate::routing::RouteGroup;
     pub use crate::server::{
         error_report_stream, shutdown_signal, ErrorReceiver, ErrorSender, Server, ShutdownReceiver,

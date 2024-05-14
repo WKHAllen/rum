@@ -4,7 +4,7 @@ use crate::body::Json;
 use crate::error::{Error, ErrorSource, Result};
 use crate::header::HeaderMapInner;
 use crate::http::StatusCode;
-use hyper::Response;
+use hyper::Response as HyperResponse;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use std::sync::Arc;
@@ -35,7 +35,7 @@ impl ErrorBody {
 
 /// The internal representation of an HTTP response.
 #[derive(Debug, Clone)]
-pub struct ServerResponseInner {
+pub struct ResponseInner {
     /// The response status code.
     pub(crate) code: StatusCode,
     /// The response body.
@@ -44,7 +44,7 @@ pub struct ServerResponseInner {
     pub(crate) headers: HeaderMapInner,
 }
 
-impl Default for ServerResponseInner {
+impl Default for ResponseInner {
     fn default() -> Self {
         Self {
             code: StatusCode::Ok,
@@ -56,17 +56,17 @@ impl Default for ServerResponseInner {
 
 /// An HTTP response.
 #[derive(Debug, Clone)]
-pub enum ServerResponse {
+pub enum Response {
     /// A successful response. This can still indicate to the client that an
     /// error occurred, if the status code and body are configured
     /// appropriately.
-    Ok(ServerResponseInner),
+    Ok(ResponseInner),
     /// An unsuccessful response. A response will still be sent to the client,
     /// but the error will be reported.
     Err(Arc<Error>),
 }
 
-impl ServerResponse {
+impl Response {
     /// Creates a new success response value, with status code 200 and an empty
     /// JSON object body.
     pub fn new() -> Self {
@@ -111,15 +111,15 @@ impl ServerResponse {
     }
 }
 
-impl Default for ServerResponse {
+impl Default for Response {
     fn default() -> Self {
-        Self::Ok(ServerResponseInner::default())
+        Self::Ok(ResponseInner::default())
     }
 }
 
 #[allow(clippy::from_over_into)]
-impl Into<Response<String>> for ServerResponse {
-    fn into(self) -> Response<String> {
+impl Into<HyperResponse<String>> for Response {
+    fn into(self) -> HyperResponse<String> {
         let (code, body, headers) = match self {
             Self::Ok(inner) => (inner.code, inner.body, inner.headers),
             Self::Err(err) => (
@@ -134,7 +134,7 @@ impl Into<Response<String>> for ServerResponse {
             ),
         };
 
-        let res = Response::builder()
+        let res = HyperResponse::builder()
             .status(code.code())
             .header("Content-Type", "application/json");
 
@@ -149,11 +149,11 @@ impl Into<Response<String>> for ServerResponse {
 /// A trait for defining which types can be used as HTTP responses.
 pub trait IntoResponse {
     /// Performs the conversion to a response.
-    fn into_response(self) -> ServerResponse;
+    fn into_response(self) -> Response;
 }
 
-impl IntoResponse for ServerResponse {
-    fn into_response(self) -> ServerResponse {
+impl IntoResponse for Response {
+    fn into_response(self) -> Response {
         self
     }
 }
@@ -162,8 +162,8 @@ impl<T> IntoResponse for Json<T>
 where
     T: Serialize,
 {
-    fn into_response(self) -> ServerResponse {
-        ServerResponse::new().body_json(self.0)
+    fn into_response(self) -> Response {
+        Response::new().body_json(self.0)
     }
 }
 
@@ -171,7 +171,7 @@ impl<T> IntoResponse for (StatusCode, T)
 where
     T: IntoResponse,
 {
-    fn into_response(self) -> ServerResponse {
+    fn into_response(self) -> Response {
         self.1.into_response().status_code(self.0)
     }
 }
@@ -180,10 +180,10 @@ impl<T> IntoResponse for Result<T>
 where
     T: IntoResponse,
 {
-    fn into_response(self) -> ServerResponse {
+    fn into_response(self) -> Response {
         match self {
             Ok(value) => value.into_response(),
-            Err(err) => ServerResponse::new_error(err),
+            Err(err) => Response::new_error(err),
         }
     }
 }

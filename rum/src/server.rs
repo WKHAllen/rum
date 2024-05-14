@@ -2,14 +2,14 @@
 
 use crate::error::Error;
 use crate::http::{HttpMethod, StatusCode};
-use crate::request::ServerRequest;
-use crate::response::{ErrorBody, ServerResponse};
+use crate::request::Request;
+use crate::response::{ErrorBody, Response};
 use crate::routing::{Route, RouteGroup, RoutePath};
 use crate::state::StateManager;
 use crate::typemap::TypeMap;
 use hyper::body::Incoming;
 use hyper::service::Service;
-use hyper::{Request, Response};
+use hyper::{Request as HyperRequest, Response as HyperResponse};
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use hyper_util::server::conn::auto::Builder;
 use std::collections::HashMap;
@@ -90,13 +90,13 @@ struct ServerService {
     error_sender: Option<ErrorSender>,
 }
 
-impl Service<Request<Incoming>> for ServerService {
-    type Response = Response<String>;
+impl Service<HyperRequest<Incoming>> for ServerService {
+    type Response = HyperResponse<String>;
     type Error = Error;
     type Future =
         Pin<Box<dyn Future<Output = std::result::Result<Self::Response, Self::Error>> + Send>>;
 
-    fn call(&self, req: Request<Incoming>) -> Self::Future {
+    fn call(&self, req: HyperRequest<Incoming>) -> Self::Future {
         let method = HttpMethod::from(req.method());
         let path = RoutePath::from(req.uri().path());
         let route = self.routes.get(&(method, path)).cloned();
@@ -104,13 +104,13 @@ impl Service<Request<Incoming>> for ServerService {
         let error_sender = self.error_sender.clone();
 
         Box::pin(async move {
-            let req = ServerRequest::new(req, state).await?;
+            let req = Request::new(req, state).await?;
 
             Ok(match route {
                 Some(route) => {
                     let res = route.call(req).await;
 
-                    if let ServerResponse::Err(err) = &res {
+                    if let Response::Err(err) = &res {
                         if err.source().is_server() {
                             if let Some(error_sender) = error_sender {
                                 error_sender.report(Arc::clone(err));
@@ -120,7 +120,7 @@ impl Service<Request<Incoming>> for ServerService {
 
                     res
                 }
-                None => ServerResponse::new()
+                None => Response::new()
                     .status_code(StatusCode::NotFound)
                     .body_json(ErrorBody::new("Not found")),
             }
