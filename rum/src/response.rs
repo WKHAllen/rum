@@ -2,6 +2,7 @@
 
 use crate::body::Json;
 use crate::error::{Error, ErrorSource, Result};
+use crate::header::HeaderMapInner;
 use crate::http::StatusCode;
 use hyper::Response;
 use serde::{Deserialize, Serialize};
@@ -39,6 +40,8 @@ pub struct ServerResponseInner {
     pub(crate) code: StatusCode,
     /// The response body.
     pub(crate) body: String,
+    /// The response headers.
+    pub(crate) headers: HeaderMapInner,
 }
 
 impl Default for ServerResponseInner {
@@ -46,6 +49,7 @@ impl Default for ServerResponseInner {
         Self {
             code: StatusCode::Ok,
             body: "{}".to_owned(),
+            headers: HeaderMapInner::default(),
         }
     }
 }
@@ -96,6 +100,15 @@ impl ServerResponse {
 
         self
     }
+
+    /// Sets a response header.
+    pub fn header(mut self, name: &str, value: &str) -> Self {
+        if let Self::Ok(inner) = &mut self {
+            inner.headers.0.insert(name.to_owned(), value.to_owned());
+        }
+
+        self
+    }
 }
 
 impl Default for ServerResponse {
@@ -107,8 +120,8 @@ impl Default for ServerResponse {
 #[allow(clippy::from_over_into)]
 impl Into<Response<String>> for ServerResponse {
     fn into(self) -> Response<String> {
-        let (code, body) = match self {
-            Self::Ok(inner) => (inner.code, inner.body),
+        let (code, body, headers) = match self {
+            Self::Ok(inner) => (inner.code, inner.body, inner.headers),
             Self::Err(err) => (
                 err.source().response_status(),
                 ErrorBody::new(match err.source() {
@@ -117,14 +130,19 @@ impl Into<Response<String>> for ServerResponse {
                 })
                 .to_json()
                 .unwrap(),
+                HeaderMapInner::default(),
             ),
         };
 
-        Response::builder()
+        let res = Response::builder()
             .status(code.code())
-            .header("Content-Type", "application/json")
-            .body(body)
-            .unwrap()
+            .header("Content-Type", "application/json");
+
+        let res = headers
+            .into_iter()
+            .fold(res, |res, (name, value)| res.header(name, value));
+
+        res.body(body).unwrap()
     }
 }
 
