@@ -33,7 +33,7 @@ pub mod prelude {
     pub use crate::path::PathParam;
     pub use crate::path::{PathParamMap, PathParams};
     #[cfg(feature = "nightly")]
-    pub use crate::query::{Query, QueryOptional};
+    pub use crate::query::{QueryParam, QueryParamOptional};
     pub use crate::query::{QueryParamMap, QueryParams};
     pub use crate::request::{FromRequest, Request};
     pub use crate::response::{IntoResponse, Response};

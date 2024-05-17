@@ -29,8 +29,8 @@ struct GreetingResponse {
 async fn greet(
     greeting_request: Json<GreetingRequest>,
     state: State<Counter>,
-    my_query: Query<"my_query">,
-    my_query_opt: QueryOptional<"my_query_opt">,
+    my_query: QueryParam<"my_query">,
+    my_query_opt: QueryParamOptional<"my_query_opt">,
     my_header: Header<"my_header">,
     my_header_opt: HeaderOptional<"my_header_opt">,
 ) -> Json<GreetingResponse> {

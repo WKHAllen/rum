@@ -200,10 +200,10 @@ where
 
 /// A single required query parameter.
 #[cfg(feature = "nightly")]
-pub struct Query<const Q: &'static str>(pub(crate) String);
+pub struct QueryParam<const Q: &'static str>(pub(crate) String);
 
 #[cfg(feature = "nightly")]
-impl<const Q: &'static str> Query<Q> {
+impl<const Q: &'static str> QueryParam<Q> {
     /// Moves the query value out of this wrapper.
     pub fn into_inner(self) -> String {
         self.0
@@ -211,7 +211,7 @@ impl<const Q: &'static str> Query<Q> {
 }
 
 #[cfg(feature = "nightly")]
-impl<const Q: &'static str> Deref for Query<Q> {
+impl<const Q: &'static str> Deref for QueryParam<Q> {
     type Target = String;
 
     fn deref(&self) -> &Self::Target {
@@ -220,7 +220,7 @@ impl<const Q: &'static str> Deref for Query<Q> {
 }
 
 #[cfg(feature = "nightly")]
-impl<const Q: &'static str> DerefMut for Query<Q> {
+impl<const Q: &'static str> DerefMut for QueryParam<Q> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
@@ -228,10 +228,10 @@ impl<const Q: &'static str> DerefMut for Query<Q> {
 
 /// A single optional query parameter.
 #[cfg(feature = "nightly")]
-pub struct QueryOptional<const Q: &'static str>(pub(crate) Option<String>);
+pub struct QueryParamOptional<const Q: &'static str>(pub(crate) Option<String>);
 
 #[cfg(feature = "nightly")]
-impl<const Q: &'static str> QueryOptional<Q> {
+impl<const Q: &'static str> QueryParamOptional<Q> {
     /// Moves the query value out of this wrapper.
     pub fn into_inner(self) -> Option<String> {
         self.0
@@ -239,7 +239,7 @@ impl<const Q: &'static str> QueryOptional<Q> {
 }
 
 #[cfg(feature = "nightly")]
-impl<const Q: &'static str> Deref for QueryOptional<Q> {
+impl<const Q: &'static str> Deref for QueryParamOptional<Q> {
     type Target = Option<String>;
 
     fn deref(&self) -> &Self::Target {
@@ -248,7 +248,7 @@ impl<const Q: &'static str> Deref for QueryOptional<Q> {
 }
 
 #[cfg(feature = "nightly")]
-impl<const Q: &'static str> DerefMut for QueryOptional<Q> {
+impl<const Q: &'static str> DerefMut for QueryParamOptional<Q> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }

@@ -10,7 +10,7 @@ use crate::http::HttpMethod;
 use crate::path::PathParam;
 use crate::path::{PathParamMap, PathParams};
 #[cfg(feature = "nightly")]
-use crate::query::{Query, QueryOptional};
+use crate::query::{QueryParam, QueryParamOptional};
 use crate::query::{QueryParamMap, QueryParams};
 use crate::routing::{RoutePath, RoutePathMatched, RoutePathMatchedSegment};
 use crate::state::{State, StateManager};
@@ -196,14 +196,14 @@ where
 }
 
 #[cfg(feature = "nightly")]
-impl<const Q: &'static str> FromRequest for Query<Q> {
+impl<const Q: &'static str> FromRequest for QueryParam<Q> {
     fn from_request(req: &Request) -> Result<Self> {
         Ok(Self(req.query_required(Q)?.to_owned()))
     }
 }
 
 #[cfg(feature = "nightly")]
-impl<const Q: &'static str> FromRequest for QueryOptional<Q> {
+impl<const Q: &'static str> FromRequest for QueryParamOptional<Q> {
     fn from_request(req: &Request) -> Result<Self> {
         Ok(Self(req.query_optional(Q).map(ToOwned::to_owned)))
     }
