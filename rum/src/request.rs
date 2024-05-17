@@ -4,14 +4,14 @@ use crate::body::{BodyRaw, Json};
 use crate::error::{Error, Result};
 #[cfg(feature = "nightly")]
 use crate::header::{Header, HeaderOptional};
-use crate::header::{HeaderMap, Headers};
+use crate::header::{HeaderMap, Headers, ParseHeader};
 use crate::http::HttpMethod;
 #[cfg(feature = "nightly")]
 use crate::path::PathParam;
-use crate::path::{PathParamMap, PathParams};
+use crate::path::{ParsePathParam, PathParamMap, PathParams};
+use crate::query::{ParseQueryParam, QueryParamMap, QueryParams};
 #[cfg(feature = "nightly")]
 use crate::query::{QueryParam, QueryParamOptional};
-use crate::query::{QueryParamMap, QueryParams};
 use crate::routing::{RoutePath, RoutePathMatched, RoutePathMatchedSegment};
 use crate::state::{State, StateManager};
 use http_body_util::BodyExt;
@@ -172,9 +172,12 @@ where
 }
 
 #[cfg(feature = "nightly")]
-impl<const P: &'static str> FromRequest for PathParam<P> {
+impl<const P: &'static str, T> FromRequest for PathParam<P, T>
+where
+    T: ParsePathParam,
+{
     fn from_request(req: &Request) -> Result<Self> {
-        Ok(Self(req.path_params.get(P)?.to_owned()))
+        Ok(Self(T::parse(P, req.path_params.get(P)?)?))
     }
 }
 
@@ -196,16 +199,25 @@ where
 }
 
 #[cfg(feature = "nightly")]
-impl<const Q: &'static str> FromRequest for QueryParam<Q> {
+impl<const Q: &'static str, T> FromRequest for QueryParam<Q, T>
+where
+    T: ParseQueryParam,
+{
     fn from_request(req: &Request) -> Result<Self> {
-        Ok(Self(req.query_required(Q)?.to_owned()))
+        Ok(Self(T::parse(Q, req.query_required(Q)?)?))
     }
 }
 
 #[cfg(feature = "nightly")]
-impl<const Q: &'static str> FromRequest for QueryParamOptional<Q> {
+impl<const Q: &'static str, T> FromRequest for QueryParamOptional<Q, T>
+where
+    T: ParseQueryParam,
+{
     fn from_request(req: &Request) -> Result<Self> {
-        Ok(Self(req.query_optional(Q).map(ToOwned::to_owned)))
+        Ok(Self(match req.query_optional(Q) {
+            Some(value) => Some(T::parse(Q, value)?),
+            None => None,
+        }))
     }
 }
 
@@ -227,16 +239,25 @@ where
 }
 
 #[cfg(feature = "nightly")]
-impl<const Q: &'static str> FromRequest for Header<Q> {
+impl<const H: &'static str, T> FromRequest for Header<H, T>
+where
+    T: ParseHeader,
+{
     fn from_request(req: &Request) -> Result<Self> {
-        Ok(Self(req.header_required(Q)?.to_owned()))
+        Ok(Self(T::parse(H, req.header_required(H)?)?))
     }
 }
 
 #[cfg(feature = "nightly")]
-impl<const Q: &'static str> FromRequest for HeaderOptional<Q> {
+impl<const H: &'static str, T> FromRequest for HeaderOptional<H, T>
+where
+    T: ParseHeader,
+{
     fn from_request(req: &Request) -> Result<Self> {
-        Ok(Self(req.header_optional(Q).map(ToOwned::to_owned)))
+        Ok(Self(match req.header_optional(H) {
+            Some(value) => Some(T::parse(H, value)?),
+            None => None,
+        }))
     }
 }
 

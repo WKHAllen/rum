@@ -5,7 +5,9 @@ use serde::de::DeserializeOwned;
 use std::borrow::{Borrow, BorrowMut};
 use std::collections::hash_map::Iter;
 use std::collections::HashMap;
+use std::fmt::Display;
 use std::ops::{Deref, DerefMut};
+use std::str::FromStr;
 use std::sync::Arc;
 
 /// A representation of a map of path parameters.
@@ -98,21 +100,54 @@ where
     }
 }
 
+/// Parse a path parameter from its string value. Direct implementation of this
+/// trait is discouraged. Please instead implement [`FromStr`], and this trait
+/// will be implemented automatically as long as the associated `Err` type
+/// implements [`Display`].
+pub trait ParsePathParam: Sized {
+    /// Parses the path parameter from its string representation.
+    fn parse(name: &str, value: &str) -> Result<Self>;
+}
+
+impl<T, E> ParsePathParam for T
+where
+    T: FromStr<Err = E>,
+    E: Display,
+{
+    fn parse(name: &str, value: &str) -> Result<Self> {
+        match T::from_str(value) {
+            Ok(value_parsed) => Ok(value_parsed),
+            Err(e) => Err(Error::PathParameterParseError(
+                name.to_owned(),
+                e.to_string(),
+            )),
+        }
+    }
+}
+
 /// A single path parameter.
 #[cfg(feature = "nightly")]
-pub struct PathParam<const P: &'static str>(pub(crate) String);
+pub struct PathParam<const P: &'static str, T = String>(pub(crate) T)
+where
+    T: ParsePathParam;
 
 #[cfg(feature = "nightly")]
-impl<const P: &'static str> PathParam<P> {
+impl<const P: &'static str, T> PathParam<P, T>
+where
+    T: ParsePathParam,
+{
     /// Moves the path parameter value out of this wrapper.
-    pub fn into_inner(self) -> String {
+    pub fn into_inner(self) -> T {
         self.0
     }
 }
 
 #[cfg(feature = "nightly")]
-impl<const P: &'static str> Deref for PathParam<P> {
-    type Target = String;
+impl<const P: &'static str, T> Deref for PathParam<P, T>
+where
+    T: ParsePathParam,
+{
+    type Target = T;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -120,7 +155,10 @@ impl<const P: &'static str> Deref for PathParam<P> {
 }
 
 #[cfg(feature = "nightly")]
-impl<const P: &'static str> DerefMut for PathParam<P> {
+impl<const P: &'static str, T> DerefMut for PathParam<P, T>
+where
+    T: ParsePathParam,
+{
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }

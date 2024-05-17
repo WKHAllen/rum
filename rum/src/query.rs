@@ -5,7 +5,9 @@ use serde::de::DeserializeOwned;
 use std::borrow::{Borrow, BorrowMut};
 use std::collections::hash_map::{IntoIter, Iter};
 use std::collections::HashMap;
+use std::fmt::Display;
 use std::ops::{Deref, DerefMut};
+use std::str::FromStr;
 use std::sync::Arc;
 
 /// The inner representation of a map of query parameters.
@@ -198,21 +200,54 @@ where
     }
 }
 
+/// Parse a query parameter from its string value. Direct implementation of this
+/// trait is discouraged. Please instead implement [`FromStr`], and this trait
+/// will be implemented automatically as long as the associated `Err` type
+/// implements [`Display`].
+pub trait ParseQueryParam: Sized {
+    /// Parses the query parameter from its string representation.
+    fn parse(name: &str, value: &str) -> Result<Self>;
+}
+
+impl<T, E> ParseQueryParam for T
+where
+    T: FromStr<Err = E>,
+    E: Display,
+{
+    fn parse(name: &str, value: &str) -> Result<Self> {
+        match T::from_str(value) {
+            Ok(value_parsed) => Ok(value_parsed),
+            Err(e) => Err(Error::QueryParameterParseError(
+                name.to_owned(),
+                e.to_string(),
+            )),
+        }
+    }
+}
+
 /// A single required query parameter.
 #[cfg(feature = "nightly")]
-pub struct QueryParam<const Q: &'static str>(pub(crate) String);
+pub struct QueryParam<const Q: &'static str, T = String>(pub(crate) T)
+where
+    T: ParseQueryParam;
 
 #[cfg(feature = "nightly")]
-impl<const Q: &'static str> QueryParam<Q> {
+impl<const Q: &'static str, T> QueryParam<Q, T>
+where
+    T: ParseQueryParam,
+{
     /// Moves the query value out of this wrapper.
-    pub fn into_inner(self) -> String {
+    pub fn into_inner(self) -> T {
         self.0
     }
 }
 
 #[cfg(feature = "nightly")]
-impl<const Q: &'static str> Deref for QueryParam<Q> {
-    type Target = String;
+impl<const Q: &'static str, T> Deref for QueryParam<Q, T>
+where
+    T: ParseQueryParam,
+{
+    type Target = T;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -220,7 +255,10 @@ impl<const Q: &'static str> Deref for QueryParam<Q> {
 }
 
 #[cfg(feature = "nightly")]
-impl<const Q: &'static str> DerefMut for QueryParam<Q> {
+impl<const Q: &'static str, T> DerefMut for QueryParam<Q, T>
+where
+    T: ParseQueryParam,
+{
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
@@ -228,19 +266,27 @@ impl<const Q: &'static str> DerefMut for QueryParam<Q> {
 
 /// A single optional query parameter.
 #[cfg(feature = "nightly")]
-pub struct QueryParamOptional<const Q: &'static str>(pub(crate) Option<String>);
+pub struct QueryParamOptional<const Q: &'static str, T = String>(pub(crate) Option<T>)
+where
+    T: ParseQueryParam;
 
 #[cfg(feature = "nightly")]
-impl<const Q: &'static str> QueryParamOptional<Q> {
+impl<const Q: &'static str, T> QueryParamOptional<Q, T>
+where
+    T: ParseQueryParam,
+{
     /// Moves the query value out of this wrapper.
-    pub fn into_inner(self) -> Option<String> {
+    pub fn into_inner(self) -> Option<T> {
         self.0
     }
 }
 
 #[cfg(feature = "nightly")]
-impl<const Q: &'static str> Deref for QueryParamOptional<Q> {
-    type Target = Option<String>;
+impl<const Q: &'static str, T> Deref for QueryParamOptional<Q, T>
+where
+    T: ParseQueryParam,
+{
+    type Target = Option<T>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -248,7 +294,10 @@ impl<const Q: &'static str> Deref for QueryParamOptional<Q> {
 }
 
 #[cfg(feature = "nightly")]
-impl<const Q: &'static str> DerefMut for QueryParamOptional<Q> {
+impl<const Q: &'static str, T> DerefMut for QueryParamOptional<Q, T>
+where
+    T: ParseQueryParam,
+{
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }

@@ -53,6 +53,15 @@ pub enum Error {
     /// A header was missing from the request.
     #[error("missing header: '{0}'")]
     MissingHeaderError(String),
+    /// A path parameter failed parsing.
+    #[error("failed to parse path parameter '{0}': {1}")]
+    PathParameterParseError(String, String),
+    /// A query parameter failed parsing.
+    #[error("failed to parse query parameter '{0}': {1}")]
+    QueryParameterParseError(String, String),
+    /// A header failed parsing.
+    #[error("failed to parse header '{0}': {1}")]
+    HeaderParseError(String, String),
     /// An unknown state type was requested from the server state manager.
     #[error("unknown state type: '{0}'")]
     UnknownStateTypeError(&'static str),
@@ -64,7 +73,10 @@ impl Error {
         match *self {
             Self::JsonError(_)
             | Self::MissingQueryParameterError(_)
-            | Self::MissingHeaderError(_) => ErrorSource::Client,
+            | Self::MissingHeaderError(_)
+            | Self::PathParameterParseError(_, _)
+            | Self::QueryParameterParseError(_, _)
+            | Self::HeaderParseError(_, _) => ErrorSource::Client,
             Self::ServerError(_)
             | Self::MissingPathParameterError(_)
             | Self::UnknownStateTypeError(_) => ErrorSource::Server,
