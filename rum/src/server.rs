@@ -4,7 +4,7 @@ use crate::error::Error;
 use crate::http::{HttpMethod, StatusCode};
 use crate::request::Request;
 use crate::response::{ErrorBody, Response};
-use crate::routing::{Route, RouteGroup, RoutePath};
+use crate::routing::{RouteGroup, RouteHandler, RouteLevel, RoutePath};
 use crate::state::StateManager;
 use crate::typemap::TypeMap;
 use hyper::body::Incoming;
@@ -12,7 +12,6 @@ use hyper::service::Service;
 use hyper::{Request as HyperRequest, Response as HyperResponse};
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use hyper_util::server::conn::auto::Builder;
-use std::collections::HashMap;
 use std::future::Future;
 use std::io;
 use std::pin::Pin;
@@ -83,7 +82,7 @@ pub fn error_report_stream() -> (ErrorSender, ErrorReceiver) {
 /// The internal server service managed by the `hyper` runtime.
 struct ServerService {
     /// The collection of all registered routes.
-    routes: Arc<HashMap<(HttpMethod, RoutePath), Route>>,
+    routes: Arc<RouteLevel>,
     /// The global application state management system.
     state: StateManager,
     /// The error reporting sender, if one was configured.
@@ -99,15 +98,14 @@ impl Service<HyperRequest<Incoming>> for ServerService {
     fn call(&self, req: HyperRequest<Incoming>) -> Self::Future {
         let method = HttpMethod::from(req.method());
         let path = RoutePath::from(req.uri().path());
-        let route = self.routes.get(&(method, path)).cloned();
+        let matched_path_and_route = self.routes.get(method, path);
         let state = self.state.clone();
         let error_sender = self.error_sender.clone();
 
         Box::pin(async move {
-            let req = Request::new(req, state).await?;
-
-            Ok(match route {
-                Some(route) => {
+            Ok(match matched_path_and_route {
+                Some((matched_path, route)) => {
+                    let req = Request::new(req, matched_path, state).await?;
                     let res = route.call(req).await;
 
                     if let Response::Err(err) = &res {
@@ -134,7 +132,7 @@ impl Service<HyperRequest<Incoming>> for ServerService {
 #[derive(Default)]
 pub struct Server {
     /// The collection of all registered routes.
-    routes: HashMap<(HttpMethod, RoutePath), Route>,
+    routes: RouteLevel,
     /// The global application state management system type map.
     state: TypeMap,
     /// The optional shutdown signal receiver.
@@ -153,20 +151,15 @@ impl Server {
     pub fn route<P, R>(mut self, method: HttpMethod, path: P, route: R) -> Self
     where
         P: Into<RoutePath>,
-        R: Into<Route>,
+        R: Into<RouteHandler>,
     {
-        self.routes.insert((method, path.into()), route.into());
+        self.routes.add(method, path.into(), route.into());
         self
     }
 
     /// Registers a group of routes.
     pub fn route_group(mut self, route_group: RouteGroup) -> Self {
-        let path = route_group.path();
-        route_group
-            .into_iter()
-            .for_each(|((method, inner_path), route)| {
-                self.routes.insert((method, path.join(inner_path)), route);
-            });
+        self.routes.add_group(route_group.path, route_group.routes);
         self
     }
 
@@ -174,7 +167,7 @@ impl Server {
     pub fn get<P, R>(self, path: P, route: R) -> Self
     where
         P: Into<RoutePath>,
-        R: Into<Route>,
+        R: Into<RouteHandler>,
     {
         self.route(HttpMethod::Get, path, route)
     }
@@ -183,7 +176,7 @@ impl Server {
     pub fn head<P, R>(self, path: P, route: R) -> Self
     where
         P: Into<RoutePath>,
-        R: Into<Route>,
+        R: Into<RouteHandler>,
     {
         self.route(HttpMethod::Head, path, route)
     }
@@ -192,7 +185,7 @@ impl Server {
     pub fn post<P, R>(self, path: P, route: R) -> Self
     where
         P: Into<RoutePath>,
-        R: Into<Route>,
+        R: Into<RouteHandler>,
     {
         self.route(HttpMethod::Post, path, route)
     }
@@ -201,7 +194,7 @@ impl Server {
     pub fn put<P, R>(self, path: P, route: R) -> Self
     where
         P: Into<RoutePath>,
-        R: Into<Route>,
+        R: Into<RouteHandler>,
     {
         self.route(HttpMethod::Put, path, route)
     }
@@ -210,7 +203,7 @@ impl Server {
     pub fn delete<P, R>(self, path: P, route: R) -> Self
     where
         P: Into<RoutePath>,
-        R: Into<Route>,
+        R: Into<RouteHandler>,
     {
         self.route(HttpMethod::Delete, path, route)
     }
@@ -219,7 +212,7 @@ impl Server {
     pub fn connect<P, R>(self, path: P, route: R) -> Self
     where
         P: Into<RoutePath>,
-        R: Into<Route>,
+        R: Into<RouteHandler>,
     {
         self.route(HttpMethod::Connect, path, route)
     }
@@ -228,7 +221,7 @@ impl Server {
     pub fn options<P, R>(self, path: P, route: R) -> Self
     where
         P: Into<RoutePath>,
-        R: Into<Route>,
+        R: Into<RouteHandler>,
     {
         self.route(HttpMethod::Options, path, route)
     }
@@ -237,7 +230,7 @@ impl Server {
     pub fn trace<P, R>(self, path: P, route: R) -> Self
     where
         P: Into<RoutePath>,
-        R: Into<Route>,
+        R: Into<RouteHandler>,
     {
         self.route(HttpMethod::Trace, path, route)
     }
@@ -246,7 +239,7 @@ impl Server {
     pub fn patch<P, R>(self, path: P, route: R) -> Self
     where
         P: Into<RoutePath>,
-        R: Into<Route>,
+        R: Into<RouteHandler>,
     {
         self.route(HttpMethod::Patch, path, route)
     }

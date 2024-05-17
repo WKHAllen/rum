@@ -7,9 +7,12 @@ use crate::header::{Header, HeaderOptional};
 use crate::header::{HeaderMap, Headers};
 use crate::http::HttpMethod;
 #[cfg(feature = "nightly")]
+use crate::path::PathParam;
+use crate::path::{PathParamMap, PathParams};
+#[cfg(feature = "nightly")]
 use crate::query::{Query, QueryOptional};
 use crate::query::{QueryParamMap, QueryParams};
-use crate::routing::RoutePath;
+use crate::routing::{RoutePath, RoutePathMatched, RoutePathMatchedSegment};
 use crate::state::{State, StateManager};
 use http_body_util::BodyExt;
 use hyper::body::Incoming;
@@ -28,6 +31,8 @@ pub struct Request {
     method: HttpMethod,
     /// The request path.
     path: RoutePath,
+    /// The map of path parameters.
+    path_params: PathParamMap,
     /// The map of query parameters.
     query: QueryParamMap,
     /// The map of headers.
@@ -38,13 +43,28 @@ pub struct Request {
 
 impl Request {
     /// Attempts to parse a [`hyper::Request`] into `Self`.
-    pub(crate) async fn new(req: HyperRequest<Incoming>, state: StateManager) -> Result<Self> {
+    pub(crate) async fn new(
+        req: HyperRequest<Incoming>,
+        matched_path: RoutePathMatched,
+        state: StateManager,
+    ) -> Result<Self> {
         let (head, body) = req.into_parts();
 
         Ok(Self {
             body: Arc::from(body.collect().await?.to_bytes().to_vec()),
             method: HttpMethod::from(&head.method),
             path: RoutePath::from(head.uri.path()),
+            path_params: PathParamMap(Arc::new(
+                matched_path
+                    .iter()
+                    .filter_map(|segment| match segment {
+                        RoutePathMatchedSegment::Static(_) => None,
+                        RoutePathMatchedSegment::Wildcard(name, value) => {
+                            Some((name.clone(), value.clone()))
+                        }
+                    })
+                    .collect(),
+            )),
             query: QueryParamMap::from(head.uri.query()),
             headers: head
                 .headers
@@ -134,6 +154,30 @@ impl FromRequest for RoutePath {
     }
 }
 
+impl FromRequest for PathParamMap {
+    fn from_request(req: &Request) -> Result<Self> {
+        Ok(req.path_params.clone())
+    }
+}
+
+impl<T> FromRequest for PathParams<T>
+where
+    T: DeserializeOwned,
+{
+    fn from_request(req: &Request) -> Result<Self> {
+        Ok(Self(serde_json::from_value(serde_json::to_value(
+            &*req.path_params.0,
+        )?)?))
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<const P: &'static str> FromRequest for PathParam<P> {
+    fn from_request(req: &Request) -> Result<Self> {
+        Ok(Self(req.path_params.get(P)?.to_owned()))
+    }
+}
+
 impl FromRequest for QueryParamMap {
     fn from_request(req: &Request) -> Result<Self> {
         Ok(req.query.clone())
@@ -154,14 +198,14 @@ where
 #[cfg(feature = "nightly")]
 impl<const Q: &'static str> FromRequest for Query<Q> {
     fn from_request(req: &Request) -> Result<Self> {
-        Ok(Query(req.query_required(Q)?.to_owned()))
+        Ok(Self(req.query_required(Q)?.to_owned()))
     }
 }
 
 #[cfg(feature = "nightly")]
 impl<const Q: &'static str> FromRequest for QueryOptional<Q> {
     fn from_request(req: &Request) -> Result<Self> {
-        Ok(QueryOptional(req.query_optional(Q).map(ToOwned::to_owned)))
+        Ok(Self(req.query_optional(Q).map(ToOwned::to_owned)))
     }
 }
 
@@ -185,16 +229,14 @@ where
 #[cfg(feature = "nightly")]
 impl<const Q: &'static str> FromRequest for Header<Q> {
     fn from_request(req: &Request) -> Result<Self> {
-        Ok(Header(req.header_required(Q)?.to_owned()))
+        Ok(Self(req.header_required(Q)?.to_owned()))
     }
 }
 
 #[cfg(feature = "nightly")]
 impl<const Q: &'static str> FromRequest for HeaderOptional<Q> {
     fn from_request(req: &Request) -> Result<Self> {
-        Ok(HeaderOptional(
-            req.header_optional(Q).map(ToOwned::to_owned),
-        ))
+        Ok(Self(req.header_optional(Q).map(ToOwned::to_owned)))
     }
 }
 
@@ -204,7 +246,7 @@ where
 {
     fn from_request(req: &Request) -> Result<Self> {
         match req.state.get_cloned::<T>() {
-            Some(state) => Ok(State(state)),
+            Some(state) => Ok(Self(state)),
             None => Err(Error::UnknownStateTypeError(type_name::<T>())),
         }
     }

@@ -12,6 +12,7 @@ pub mod body;
 pub mod error;
 pub mod header;
 pub mod http;
+pub mod path;
 pub mod query;
 pub mod request;
 pub mod response;
@@ -28,6 +29,9 @@ pub mod prelude {
     pub use crate::header::{Header, HeaderOptional};
     pub use crate::header::{HeaderMap, Headers};
     pub use crate::http::{HttpMethod, StatusCode};
+    #[cfg(feature = "nightly")]
+    pub use crate::path::PathParam;
+    pub use crate::path::{PathParamMap, PathParams};
     #[cfg(feature = "nightly")]
     pub use crate::query::{Query, QueryOptional};
     pub use crate::query::{QueryParamMap, QueryParams};

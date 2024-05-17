@@ -44,6 +44,9 @@ pub enum Error {
     /// A `hyper` server error occurred.
     #[error("server error: {0}")]
     ServerError(#[from] hyper::Error),
+    /// A path parameter was missing.
+    #[error("missing path parameter: '{0}'")]
+    MissingPathParameterError(String),
     /// A query parameter was missing from the request.
     #[error("missing query parameter: '{0}'")]
     MissingQueryParameterError(String),
@@ -62,7 +65,9 @@ impl Error {
             Self::JsonError(_)
             | Self::MissingQueryParameterError(_)
             | Self::MissingHeaderError(_) => ErrorSource::Client,
-            Self::ServerError(_) | Self::UnknownStateTypeError(_) => ErrorSource::Server,
+            Self::ServerError(_)
+            | Self::MissingPathParameterError(_)
+            | Self::UnknownStateTypeError(_) => ErrorSource::Server,
         }
     }
 }
