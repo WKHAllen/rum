@@ -100,24 +100,24 @@ impl Request {
         &self.path
     }
 
+    /// Gets a required query parameter value.
+    pub fn query(&self, query: &str) -> Result<&str> {
+        self.query.get(query)
+    }
+
     /// Gets an optional query parameter value.
     pub fn query_optional(&self, query: &str) -> Option<&str> {
         self.query.get_optional(query)
     }
 
-    /// Gets a required query parameter value.
-    pub fn query_required(&self, query: &str) -> Result<&str> {
-        self.query.get_required(query)
+    /// Gets a required header value.
+    pub fn header(&self, header: &str) -> Result<&str> {
+        self.headers.get(header)
     }
 
     /// Gets an optional header value.
     pub fn header_optional(&self, header: &str) -> Option<&str> {
         self.headers.get_optional(header)
-    }
-
-    /// Gets a required header value.
-    pub fn header_required(&self, header: &str) -> Result<&str> {
-        self.headers.get_required(header)
     }
 }
 
@@ -204,7 +204,7 @@ where
     T: ParseQueryParam,
 {
     fn from_request(req: &Request) -> Result<Self> {
-        Ok(Self(T::parse(Q, req.query_required(Q)?)?))
+        Ok(Self(T::parse(Q, req.query(Q)?)?))
     }
 }
 
@@ -244,7 +244,7 @@ where
     T: ParseHeader,
 {
     fn from_request(req: &Request) -> Result<Self> {
-        Ok(Self(T::parse(H, req.header_required(H)?)?))
+        Ok(Self(T::parse(H, req.header(H)?)?))
     }
 }
 

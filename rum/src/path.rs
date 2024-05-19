@@ -25,6 +25,16 @@ impl PathParamMap {
             .ok_or(Error::MissingPathParameterError(name.to_owned()))
     }
 
+    /// Gets a required path parameter value and attempts to parse it into `T`,
+    /// where `T` is any type that implements [`ParsePathParam`]. If the path
+    /// parameter is not present, or if parsing fails, `Err` is returned.
+    pub fn get_as<T>(&self, name: &str) -> Result<T>
+    where
+        T: ParsePathParam,
+    {
+        self.get(name).and_then(|value| T::parse(name, value))
+    }
+
     /// Returns an iterator over all path parameters.
     pub fn iter(&self) -> Iter<'_, String, String> {
         self.into_iter()

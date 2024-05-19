@@ -15,17 +15,40 @@ use std::sync::Arc;
 pub struct QueryParamMap(pub(crate) Arc<HashMap<String, String>>);
 
 impl QueryParamMap {
+    /// Gets a required query parameter value, returning `Err` if the query
+    /// parameter is not present. This method is provided for convenience, since
+    /// the error can be propagated using `?` from any route handler.
+    pub fn get(&self, query: &str) -> Result<&str> {
+        self.get_optional(query)
+            .ok_or(Error::MissingQueryParameterError(query.to_owned()))
+    }
+
+    /// Gets a required query parameter value and attempts to parse it into `T`,
+    /// where `T` is any type that implements [`ParseQueryParam`]. If the query
+    /// parameter is not present, or if parsing fails, `Err` is returned.
+    pub fn get_as<T>(&self, query: &str) -> Result<T>
+    where
+        T: ParseQueryParam,
+    {
+        self.get(query).and_then(|value| T::parse(query, value))
+    }
+
     /// Gets an optional query parameter value.
     pub fn get_optional(&self, query: &str) -> Option<&str> {
         self.0.get(query).map(|s| s.as_str())
     }
 
-    /// Gets a required query parameter value, returning `Err` if the query
-    /// parameter is not present. This method is provided for convenience, since
-    /// the error can be propagated using `?` from any route handler.
-    pub fn get_required(&self, query: &str) -> Result<&str> {
-        self.get_optional(query)
-            .ok_or(Error::MissingQueryParameterError(query.to_owned()))
+    /// Gets an optional query parameter value and attempts to parse it into
+    /// `T`, where `T` is any type that implements [`ParseQueryParam`]. If
+    /// parsing fails, `Err` is returned.
+    pub fn get_optional_as<T>(&self, query: &str) -> Result<Option<T>>
+    where
+        T: ParseQueryParam,
+    {
+        match self.get_optional(query) {
+            Some(value) => Ok(Some(T::parse(query, value)?)),
+            None => Ok(None),
+        }
     }
 }
 

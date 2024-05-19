@@ -15,17 +15,40 @@ use std::sync::Arc;
 pub struct HeaderMap(pub(crate) Arc<HashMap<String, String>>);
 
 impl HeaderMap {
+    /// Gets a required header value, returning `Err` if the header is not
+    /// present. This method is provided for convenience, since the error can be
+    /// propagated using `?` from any route handler.
+    pub fn get(&self, header: &str) -> Result<&str> {
+        self.get_optional(header)
+            .ok_or(Error::MissingHeaderError(header.to_owned()))
+    }
+
+    /// Gets a required header value and attempts to parse it into `T`, where
+    /// `T` is any type that implements [`ParseHeader`]. If the header is not
+    /// present, or if parsing fails, `Err` is returned.
+    pub fn get_as<T>(&self, header: &str) -> Result<T>
+    where
+        T: ParseHeader,
+    {
+        self.get(header).and_then(|value| T::parse(header, value))
+    }
+
     /// Gets an optional header value.
     pub fn get_optional(&self, header: &str) -> Option<&str> {
         self.0.get(header).map(|s| s.as_str())
     }
 
-    /// Gets a required header value, returning `Err` if the header is not
-    /// present. This method is provided for convenience, since the error can be
-    /// propagated using `?` from any route handler.
-    pub fn get_required(&self, header: &str) -> Result<&str> {
-        self.get_optional(header)
-            .ok_or(Error::MissingHeaderError(header.to_owned()))
+    /// Gets an optional header value and attempts to parse it into `T`, where
+    /// `T` is any type that implements [`ParseHeader`]. If parsing fails, `Err`
+    /// is returned.
+    pub fn get_optional_as<T>(&self, header: &str) -> Result<Option<T>>
+    where
+        T: ParseHeader,
+    {
+        match self.get_optional(header) {
+            Some(value) => Ok(Some(T::parse(header, value)?)),
+            None => Ok(None),
+        }
     }
 }
 
