@@ -3,18 +3,18 @@
 use crate::error::{Error, Result};
 use serde::de::DeserializeOwned;
 use std::borrow::{Borrow, BorrowMut};
-use std::collections::hash_map::{IntoIter, Iter};
+use std::collections::hash_map::Iter;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
 use std::sync::Arc;
 
-/// The inner representation of a map of query parameters.
+/// A representation of a map of query parameters.
 #[derive(Debug, Clone, PartialEq, Default)]
-pub struct QueryParamMapInner(pub(crate) HashMap<String, String>);
+pub struct QueryParamMap(pub(crate) Arc<HashMap<String, String>>);
 
-impl QueryParamMapInner {
+impl QueryParamMap {
     /// Gets an optional query parameter value.
     pub fn get_optional(&self, query: &str) -> Option<&str> {
         self.0.get(query).map(|s| s.as_str())
@@ -29,7 +29,7 @@ impl QueryParamMapInner {
     }
 }
 
-impl From<&str> for QueryParamMapInner {
+impl From<&str> for QueryParamMap {
     fn from(value: &str) -> Self {
         let queries = if value.contains('?') {
             value.split('?').nth(1).unwrap()
@@ -55,21 +55,21 @@ impl From<&str> for QueryParamMapInner {
     }
 }
 
-impl From<String> for QueryParamMapInner {
+impl From<String> for QueryParamMap {
     fn from(value: String) -> Self {
         Self::from(value.as_str())
     }
 }
 
-impl From<HashMap<String, String>> for QueryParamMapInner {
+impl From<HashMap<String, String>> for QueryParamMap {
     fn from(value: HashMap<String, String>) -> Self {
-        Self(value)
+        Self(Arc::new(value))
     }
 }
 
-impl<T> From<Option<T>> for QueryParamMapInner
+impl<T> From<Option<T>> for QueryParamMap
 where
-    T: Into<QueryParamMapInner>,
+    T: Into<QueryParamMap>,
 {
     fn from(value: Option<T>) -> Self {
         match value {
@@ -79,7 +79,7 @@ where
     }
 }
 
-impl<'a> IntoIterator for &'a QueryParamMapInner {
+impl<'a> IntoIterator for &'a QueryParamMap {
     type Item = (&'a String, &'a String);
     type IntoIter = Iter<'a, String, String>;
 
@@ -88,53 +88,22 @@ impl<'a> IntoIterator for &'a QueryParamMapInner {
     }
 }
 
-impl IntoIterator for QueryParamMapInner {
-    type Item = (String, String);
-    type IntoIter = IntoIter<String, String>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
-    }
-}
-
-impl FromIterator<(String, String)> for QueryParamMapInner {
+impl FromIterator<(String, String)> for QueryParamMap {
     fn from_iter<T: IntoIterator<Item = (String, String)>>(iter: T) -> Self {
-        Self(iter.into_iter().collect())
-    }
-}
-
-/// A representation of a map of query parameters.
-#[derive(Debug, Clone)]
-pub struct QueryParamMap(Arc<QueryParamMapInner>);
-
-impl<T> From<T> for QueryParamMap
-where
-    T: Into<QueryParamMapInner>,
-{
-    fn from(value: T) -> Self {
-        Self(Arc::new(value.into()))
-    }
-}
-
-impl<I> FromIterator<I> for QueryParamMap
-where
-    QueryParamMapInner: FromIterator<I>,
-{
-    fn from_iter<T: IntoIterator<Item = I>>(iter: T) -> Self {
-        Self(Arc::new(QueryParamMapInner::from_iter(iter)))
+        Self(Arc::new(iter.into_iter().collect()))
     }
 }
 
 impl Deref for QueryParamMap {
-    type Target = QueryParamMapInner;
+    type Target = HashMap<String, String>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl Borrow<QueryParamMapInner> for QueryParamMap {
-    fn borrow(&self) -> &QueryParamMapInner {
+impl Borrow<HashMap<String, String>> for QueryParamMap {
+    fn borrow(&self) -> &HashMap<String, String> {
         &self.0
     }
 }

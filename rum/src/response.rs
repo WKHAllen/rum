@@ -2,10 +2,10 @@
 
 use crate::body::Json;
 use crate::error::{Error, ErrorSource, Result};
-use crate::header::HeaderMapInner;
 use crate::http::StatusCode;
 use hyper::Response as HyperResponse;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fmt::Display;
 use std::sync::Arc;
 
@@ -41,7 +41,7 @@ pub struct ResponseInner {
     /// The response body.
     pub(crate) body: String,
     /// The response headers.
-    pub(crate) headers: HeaderMapInner,
+    pub(crate) headers: HashMap<String, String>,
 }
 
 impl Default for ResponseInner {
@@ -49,7 +49,7 @@ impl Default for ResponseInner {
         Self {
             code: StatusCode::Ok,
             body: "{}".to_owned(),
-            headers: HeaderMapInner::default(),
+            headers: HashMap::new(),
         }
     }
 }
@@ -104,7 +104,7 @@ impl Response {
     /// Sets a response header.
     pub fn header(mut self, name: &str, value: &str) -> Self {
         if let Self::Ok(inner) = &mut self {
-            inner.headers.0.insert(name.to_owned(), value.to_owned());
+            inner.headers.insert(name.to_owned(), value.to_owned());
         }
 
         self
@@ -130,7 +130,7 @@ impl Into<HyperResponse<String>> for Response {
                 })
                 .to_json()
                 .unwrap(),
-                HeaderMapInner::default(),
+                HashMap::new(),
             ),
         };
 

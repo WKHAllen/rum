@@ -193,7 +193,7 @@ where
 {
     fn from_request(req: &Request) -> Result<Self> {
         Ok(Self(serde_json::from_value(serde_json::to_value(
-            &req.query.0,
+            &*req.query.0,
         )?)?))
     }
 }
@@ -233,7 +233,7 @@ where
 {
     fn from_request(req: &Request) -> Result<Self> {
         Ok(Self(serde_json::from_value(serde_json::to_value(
-            &req.headers.0,
+            &*req.headers.0,
         )?)?))
     }
 }

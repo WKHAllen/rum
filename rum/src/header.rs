@@ -3,18 +3,18 @@
 use crate::error::{Error, Result};
 use serde::de::DeserializeOwned;
 use std::borrow::{Borrow, BorrowMut};
-use std::collections::hash_map::{IntoIter, Iter};
+use std::collections::hash_map::Iter;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
 use std::sync::Arc;
 
-/// The inner representation of a map of headers.
+/// A representation of a map of headers.
 #[derive(Debug, Clone, PartialEq, Default)]
-pub struct HeaderMapInner(pub(crate) HashMap<String, String>);
+pub struct HeaderMap(pub(crate) Arc<HashMap<String, String>>);
 
-impl HeaderMapInner {
+impl HeaderMap {
     /// Gets an optional header value.
     pub fn get_optional(&self, header: &str) -> Option<&str> {
         self.0.get(header).map(|s| s.as_str())
@@ -29,15 +29,15 @@ impl HeaderMapInner {
     }
 }
 
-impl From<HashMap<String, String>> for HeaderMapInner {
+impl From<HashMap<String, String>> for HeaderMap {
     fn from(value: HashMap<String, String>) -> Self {
-        Self(value)
+        Self(Arc::new(value))
     }
 }
 
-impl<T> From<Option<T>> for HeaderMapInner
+impl<T> From<Option<T>> for HeaderMap
 where
-    T: Into<HeaderMapInner>,
+    T: Into<HeaderMap>,
 {
     fn from(value: Option<T>) -> Self {
         match value {
@@ -47,7 +47,7 @@ where
     }
 }
 
-impl<'a> IntoIterator for &'a HeaderMapInner {
+impl<'a> IntoIterator for &'a HeaderMap {
     type Item = (&'a String, &'a String);
     type IntoIter = Iter<'a, String, String>;
 
@@ -56,53 +56,22 @@ impl<'a> IntoIterator for &'a HeaderMapInner {
     }
 }
 
-impl IntoIterator for HeaderMapInner {
-    type Item = (String, String);
-    type IntoIter = IntoIter<String, String>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
-    }
-}
-
-impl FromIterator<(String, String)> for HeaderMapInner {
+impl FromIterator<(String, String)> for HeaderMap {
     fn from_iter<T: IntoIterator<Item = (String, String)>>(iter: T) -> Self {
-        Self(iter.into_iter().collect())
-    }
-}
-
-/// A representation of a map of headers.
-#[derive(Debug, Clone)]
-pub struct HeaderMap(Arc<HeaderMapInner>);
-
-impl<T> From<T> for HeaderMap
-where
-    T: Into<HeaderMapInner>,
-{
-    fn from(value: T) -> Self {
-        Self(Arc::new(value.into()))
-    }
-}
-
-impl<I> FromIterator<I> for HeaderMap
-where
-    HeaderMapInner: FromIterator<I>,
-{
-    fn from_iter<T: IntoIterator<Item = I>>(iter: T) -> Self {
-        Self(Arc::new(HeaderMapInner::from_iter(iter)))
+        Self(Arc::new(iter.into_iter().collect()))
     }
 }
 
 impl Deref for HeaderMap {
-    type Target = HeaderMapInner;
+    type Target = HashMap<String, String>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl Borrow<HeaderMapInner> for HeaderMap {
-    fn borrow(&self) -> &HeaderMapInner {
+impl Borrow<HashMap<String, String>> for HeaderMap {
+    fn borrow(&self) -> &HashMap<String, String> {
         &self.0
     }
 }
