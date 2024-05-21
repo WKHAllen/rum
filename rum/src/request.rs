@@ -19,12 +19,13 @@ use hyper::body::Incoming;
 use hyper::Request as HyperRequest;
 use serde::de::DeserializeOwned;
 use std::any::type_name;
+use std::borrow::Borrow;
+use std::ops::Deref;
 use std::sync::Arc;
 
-/// An HTTP request. Typically, direct interaction with this type is
-/// discouraged. Users are encouraged to use extractors instead.
+/// The internal request type.
 #[derive(Debug)]
-pub struct Request {
+pub struct RequestInner {
     /// The raw request body.
     body: Arc<[u8]>,
     /// The request method.
@@ -41,7 +42,7 @@ pub struct Request {
     state: StateManager,
 }
 
-impl Request {
+impl RequestInner {
     /// Attempts to parse a [`hyper::Request`] into `Self`.
     pub(crate) async fn new(
         req: HyperRequest<Incoming>,
@@ -118,6 +119,38 @@ impl Request {
     /// Gets an optional header value.
     pub fn header_optional(&self, header: &str) -> Option<&str> {
         self.headers.get_optional(header)
+    }
+}
+
+/// An HTTP request. Typically, direct interaction with this type is
+/// discouraged. Users are encouraged to use extractors instead.
+#[derive(Debug, Clone)]
+pub struct Request(pub(crate) Arc<RequestInner>);
+
+impl Request {
+    /// Attempts to parse a [`hyper::Request`] into `Self`.
+    pub(crate) async fn new(
+        req: HyperRequest<Incoming>,
+        matched_path: RoutePathMatched,
+        state: StateManager,
+    ) -> Result<Self> {
+        Ok(Self(Arc::new(
+            RequestInner::new(req, matched_path, state).await?,
+        )))
+    }
+}
+
+impl Deref for Request {
+    type Target = RequestInner;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Borrow<RequestInner> for Request {
+    fn borrow(&self) -> &RequestInner {
+        &self.0
     }
 }
 

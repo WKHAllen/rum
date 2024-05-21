@@ -2,6 +2,7 @@
 
 use crate::error::Error;
 use crate::http::{HttpMethod, StatusCode};
+use crate::middleware::{Middleware, MiddlewareCollection};
 use crate::request::Request;
 use crate::response::{ErrorBody, Response};
 use crate::routing::{RouteGroup, RouteHandler, RouteLevel, RoutePath};
@@ -132,7 +133,9 @@ impl Service<HyperRequest<Incoming>> for ServerService {
 #[derive(Default)]
 pub struct Server {
     /// The collection of all registered routes.
-    routes: RouteLevel,
+    routes: RouteGroup,
+    /// The collection of all registered middleware.
+    middleware: MiddlewareCollection,
     /// The global application state management system type map.
     state: TypeMap,
     /// The optional shutdown signal receiver.
@@ -153,13 +156,13 @@ impl Server {
         P: Into<RoutePath>,
         R: Into<RouteHandler>,
     {
-        self.routes.add(method, path.into(), route.into());
+        self.routes = self.routes.route(method, path, route);
         self
     }
 
     /// Registers a group of routes.
     pub fn route_group(mut self, route_group: RouteGroup) -> Self {
-        self.routes.add_group(route_group.path, route_group.routes);
+        self.routes = self.routes.route_group(route_group);
         self
     }
 
@@ -244,6 +247,26 @@ impl Server {
         self.route(HttpMethod::Patch, path, route)
     }
 
+    /// Register middleware to be used on all routes at this level and all route
+    /// groups below.
+    pub fn with_middleware<M>(mut self, middleware: M) -> Self
+    where
+        M: Into<Middleware>,
+    {
+        self.middleware.add_recursive(middleware.into());
+        self
+    }
+
+    /// Registers middleware to be used on all routes at this level, but not on
+    /// route groups below.
+    pub fn with_local_middleware<M>(mut self, middleware: M) -> Self
+    where
+        M: Into<Middleware>,
+    {
+        self.middleware.add_local(middleware.into());
+        self
+    }
+
     /// Configures a value to be globally accessible within the state management
     /// system when the server runs. The value must implement `Clone`, so
     /// usually you'll want to wrap your data in an `Arc`. For interior
@@ -279,7 +302,7 @@ impl Server {
     where
         A: ToSocketAddrs,
     {
-        let routes = Arc::new(self.routes);
+        let routes = Arc::new(self.routes.into_route_level());
         let state = Arc::new(self.state);
         let listener = TcpListener::bind(addr).await?;
         let mut shutdown_receiver = self

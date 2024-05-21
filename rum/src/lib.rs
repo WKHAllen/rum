@@ -7,11 +7,14 @@
 #![warn(clippy::missing_docs_in_private_items)]
 #![allow(incomplete_features)]
 #![cfg_attr(feature = "nightly", feature(adt_const_params))]
+#![cfg_attr(feature = "nightly", feature(fn_traits))]
+#![cfg_attr(feature = "nightly", feature(unboxed_closures))]
 
 pub mod body;
 pub mod error;
 pub mod header;
 pub mod http;
+pub mod middleware;
 pub mod path;
 pub mod query;
 pub mod request;
@@ -29,6 +32,7 @@ pub mod prelude {
     pub use crate::header::{Header, HeaderOptional};
     pub use crate::header::{HeaderMap, Headers};
     pub use crate::http::{HttpMethod, StatusCode};
+    pub use crate::middleware::{Middleware, NextFn};
     #[cfg(feature = "nightly")]
     pub use crate::path::PathParam;
     pub use crate::path::{PathParamMap, PathParams};

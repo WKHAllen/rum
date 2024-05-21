@@ -1,6 +1,7 @@
 //! Types involving request routing.
 
 use crate::http::HttpMethod;
+use crate::middleware::{AppliedMiddleware, Middleware, MiddlewareCollection, NextFn};
 use crate::request::Request;
 use crate::response::Response;
 use std::borrow::Borrow;
@@ -339,7 +340,7 @@ impl FromIterator<RoutePathMatchedSegment> for RoutePathMatched {
 #[allow(clippy::type_complexity)]
 #[derive(Clone)]
 pub struct RouteHandler(
-    Arc<dyn Fn(Request) -> Pin<Box<dyn Future<Output = Response> + Send>> + Send + Sync>,
+    pub(crate) Arc<dyn Fn(Request) -> Pin<Box<dyn Future<Output = Response> + Send>> + Send + Sync>,
 );
 
 impl RouteHandler {
@@ -368,11 +369,84 @@ where
     }
 }
 
+/// A route handler with middleware included.
+#[derive(Clone)]
+pub struct CompleteRouteHandler {
+    /// The middleware installed on the route.
+    middleware: Arc<[Middleware]>,
+    /// The inner route handler.
+    handler: RouteHandler,
+    /// The callable used to invoke the handler and all middleware.
+    invoker: NextFn,
+}
+
+impl CompleteRouteHandler {
+    /// Creates a new route handler with middleware.
+    pub fn new(handler: RouteHandler, middleware: Arc<[Middleware]>) -> Self {
+        Self {
+            middleware: Arc::clone(&middleware),
+            handler: handler.clone(),
+            invoker: Self::generate_invoker(middleware, handler),
+        }
+    }
+
+    /// Installs additional middleware onto this route.
+    pub fn add_middleware(&mut self, mut middleware: Vec<Middleware>) {
+        middleware.extend(self.middleware.to_vec());
+        self.middleware = Arc::from(middleware);
+        self.invoker = Self::generate_invoker(Arc::clone(&self.middleware), self.handler.clone());
+    }
+
+    /// Recursively constructs a callable that can be used to invoke the handler
+    /// and all middleware.
+    fn generate_invoker_recursive(middleware: &[Middleware], handler: RouteHandler) -> NextFn {
+        match middleware.split_first() {
+            Some((first, rest)) => NextFn::new({
+                let first = first.clone();
+                let next = Self::generate_invoker_recursive(rest, handler);
+                move |req| {
+                    let first = first.clone();
+                    let next = next.clone();
+                    async move { first.call(req, next).await }
+                }
+            }),
+            None => NextFn::new(move |req| {
+                let handler = handler.clone();
+                async move { handler.call(req).await }
+            }),
+        }
+    }
+
+    /// Generates a callable that can be used to invoke the handler and all
+    /// middleware.
+    fn generate_invoker(middleware: Arc<[Middleware]>, handler: RouteHandler) -> NextFn {
+        Self::generate_invoker_recursive(&middleware, handler)
+    }
+
+    /// Calls the handler and all middleware.
+    pub(crate) async fn call(&self, req: Request) -> Response {
+        self.invoker.call(req).await
+    }
+}
+
+impl From<RouteHandler> for CompleteRouteHandler {
+    fn from(value: RouteHandler) -> Self {
+        let middleware = Arc::from([]);
+        let handler = value;
+
+        Self {
+            middleware: Arc::clone(&middleware),
+            handler: handler.clone(),
+            invoker: Self::generate_invoker(middleware, handler),
+        }
+    }
+}
+
 /// A recursive structure for containing route handlers.
 #[derive(Clone, Default)]
 pub struct RouteLevel {
     /// All routes that exist at this level of the routing tree.
-    self_routes: HashMap<HttpMethod, RouteHandler>,
+    self_routes: HashMap<HttpMethod, CompleteRouteHandler>,
     /// All static subroutes.
     static_sub_routes: HashMap<String, Self>,
     /// An optional named wildcard subroute.
@@ -392,7 +466,7 @@ impl RouteLevel {
         method: HttpMethod,
         path: RoutePath,
         path_match: RoutePathMatched,
-    ) -> Option<(RoutePathMatched, RouteHandler)> {
+    ) -> Option<(RoutePathMatched, CompleteRouteHandler)> {
         match path.split_first() {
             None => self
                 .self_routes
@@ -431,12 +505,12 @@ impl RouteLevel {
         &self,
         method: HttpMethod,
         path: RoutePath,
-    ) -> Option<(RoutePathMatched, RouteHandler)> {
+    ) -> Option<(RoutePathMatched, CompleteRouteHandler)> {
         self.get_recursive(method, path, RoutePathMatched::new())
     }
 
     /// Adds a route handler to the route tree.
-    pub fn add(&mut self, method: HttpMethod, path: RoutePath, handler: RouteHandler) {
+    pub fn add(&mut self, method: HttpMethod, path: RoutePath, handler: CompleteRouteHandler) {
         match path.split_first() {
             None => {
                 self.self_routes.insert(method, handler);
@@ -457,17 +531,26 @@ impl RouteLevel {
     }
 
     /// Merges a group of route handlers into the route tree.
-    pub fn add_group(&mut self, subpath: RoutePath, routes: Self) {
+    pub fn add_group(&mut self, group: RouteGroup, middleware: Vec<Middleware>) {
+        self.add_level(group.path(), group.into_route_level(), middleware);
+    }
+
+    /// Merges a level of route handlers into the route tree.
+    pub fn add_level(&mut self, subpath: RoutePath, routes: Self, middleware: Vec<Middleware>) {
         routes
             .flatten()
             .into_iter()
-            .for_each(|(method, path, handler)| {
+            .for_each(|(method, path, mut handler)| {
+                handler.add_middleware(middleware.clone());
                 self.add(method, subpath.join(path), handler);
             });
     }
 
     /// Recursively builds a flat collection of routes from `self`.
-    fn flatten_recursive(self, subpath: RoutePath) -> Vec<(HttpMethod, RoutePath, RouteHandler)> {
+    fn flatten_recursive(
+        self,
+        subpath: RoutePath,
+    ) -> Vec<(HttpMethod, RoutePath, CompleteRouteHandler)> {
         let mut routes = Vec::new();
 
         for (method, route) in self.self_routes {
@@ -490,13 +573,13 @@ impl RouteLevel {
     }
 
     /// Turns `self` into a flat collection of routes.
-    pub fn flatten(self) -> Vec<(HttpMethod, RoutePath, RouteHandler)> {
+    pub fn flatten(self) -> Vec<(HttpMethod, RoutePath, CompleteRouteHandler)> {
         self.flatten_recursive(RoutePath::new())
     }
 }
 
 impl IntoIterator for RouteLevel {
-    type Item = (HttpMethod, RoutePath, RouteHandler);
+    type Item = (HttpMethod, RoutePath, CompleteRouteHandler);
     type IntoIter = IntoIter<Self::Item>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -504,13 +587,23 @@ impl IntoIterator for RouteLevel {
     }
 }
 
+impl From<RouteGroup> for RouteLevel {
+    fn from(value: RouteGroup) -> Self {
+        value.into_route_level()
+    }
+}
+
 /// A group of routes under a given path.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct RouteGroup {
     /// The path of the route group.
     pub(crate) path: RoutePath,
     /// The collection of routes within the group.
-    pub(crate) routes: RouteLevel,
+    pub(crate) routes: HashMap<(HttpMethod, RoutePath), RouteHandler>,
+    /// The collection of route groups within the group.
+    pub(crate) groups: Vec<Self>,
+    /// The collection of all registered middleware.
+    pub(crate) middleware: MiddlewareCollection,
 }
 
 impl RouteGroup {
@@ -521,7 +614,9 @@ impl RouteGroup {
     {
         Self {
             path: path.into(),
-            routes: RouteLevel::new(),
+            routes: HashMap::new(),
+            groups: Vec::new(),
+            middleware: MiddlewareCollection::new(),
         }
     }
 
@@ -536,16 +631,13 @@ impl RouteGroup {
         P: Into<RoutePath>,
         R: Into<RouteHandler>,
     {
-        self.routes.add(method, path.into(), route.into());
+        self.routes.insert((method, path.into()), route.into());
         self
     }
 
     /// Registers a sub-group of routes.
-    pub fn route_group<P>(mut self, route_group: Self) -> Self
-    where
-        P: Into<RoutePath>,
-    {
-        self.routes.add_group(route_group.path, route_group.routes);
+    pub fn route_group(mut self, route_group: Self) -> Self {
+        self.groups.push(route_group);
         self
     }
 
@@ -628,5 +720,61 @@ impl RouteGroup {
         R: Into<RouteHandler>,
     {
         self.route(HttpMethod::Patch, path, route)
+    }
+
+    /// Register middleware to be used on all routes at this level and all route
+    /// groups below.
+    pub fn with_middleware<M>(mut self, middleware: M) -> Self
+    where
+        M: Into<Middleware>,
+    {
+        self.middleware.add_recursive(middleware.into());
+        self
+    }
+
+    /// Registers middleware to be used on all routes at this level, but not on
+    /// route groups below.
+    pub fn with_local_middleware<M>(mut self, middleware: M) -> Self
+    where
+        M: Into<Middleware>,
+    {
+        self.middleware.add_local(middleware.into());
+        self
+    }
+
+    /// Turns the route group into a `RouteLevel`, preserving registered
+    /// middleware correctly.
+    pub fn into_route_level(self) -> RouteLevel {
+        let (local_middleware, recursive_middleware) = self.middleware.into_iter().fold(
+            (Vec::new(), Vec::new()),
+            |(mut local_middleware, mut recursive_middleware), middleware| {
+                match middleware {
+                    AppliedMiddleware::Local(inner) => local_middleware.push(inner),
+                    AppliedMiddleware::Recursive(inner) => {
+                        local_middleware.push(inner.clone());
+                        recursive_middleware.push(inner);
+                    }
+                }
+
+                (local_middleware, recursive_middleware)
+            },
+        );
+        let local_middleware = Arc::from(local_middleware);
+
+        let mut route_level = RouteLevel::new();
+
+        for ((method, path), handler) in self.routes {
+            route_level.add(
+                method,
+                path,
+                CompleteRouteHandler::new(handler, Arc::clone(&local_middleware)),
+            );
+        }
+
+        for group in self.groups {
+            route_level.add_group(group, recursive_middleware.clone());
+        }
+
+        route_level
     }
 }
