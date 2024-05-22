@@ -6,6 +6,7 @@ use crate::error::{Error, Result};
 use crate::header::{Header, HeaderOptional, ParseHeader};
 use crate::header::{HeaderMap, Headers};
 use crate::http::HttpMethod;
+use crate::middleware::NextFn;
 #[cfg(feature = "nightly")]
 use crate::path::{ParsePathParam, PathParam};
 use crate::path::{PathParamMap, PathParams};
@@ -13,7 +14,7 @@ use crate::path::{PathParamMap, PathParams};
 use crate::query::{ParseQueryParam, QueryParam, QueryParamOptional};
 use crate::query::{QueryParamMap, QueryParams};
 use crate::routing::{RoutePath, RoutePathMatched, RoutePathMatchedSegment};
-use crate::state::{State, StateManager};
+use crate::state::{LocalState, State, StateManager};
 use http_body_util::BodyExt;
 use hyper::body::Incoming;
 use hyper::Request as HyperRequest;
@@ -40,6 +41,8 @@ pub struct RequestInner {
     headers: HeaderMap,
     /// The global application state manager.
     state: StateManager,
+    /// The local state manager.
+    local_state: LocalState,
 }
 
 impl RequestInner {
@@ -80,6 +83,7 @@ impl RequestInner {
                 })
                 .collect(),
             state,
+            local_state: LocalState::new(),
         })
     }
 
@@ -97,8 +101,8 @@ impl RequestInner {
     }
 
     /// Gets the request path.
-    pub fn path(&self) -> &RoutePath {
-        &self.path
+    pub fn path(&self) -> RoutePath {
+        self.path.clone()
     }
 
     /// Gets a required query parameter value.
@@ -124,8 +128,13 @@ impl RequestInner {
 
 /// An HTTP request. Typically, direct interaction with this type is
 /// discouraged. Users are encouraged to use extractors instead.
-#[derive(Debug, Clone)]
-pub struct Request(pub(crate) Arc<RequestInner>);
+#[derive(Clone)]
+pub struct Request {
+    /// The inner request value.
+    pub(crate) inner: Arc<RequestInner>,
+    /// The next middleware function.
+    pub(crate) next: Option<NextFn>,
+}
 
 impl Request {
     /// Attempts to parse a [`hyper::Request`] into `Self`.
@@ -134,9 +143,18 @@ impl Request {
         matched_path: RoutePathMatched,
         state: StateManager,
     ) -> Result<Self> {
-        Ok(Self(Arc::new(
-            RequestInner::new(req, matched_path, state).await?,
-        )))
+        Ok(Self {
+            inner: Arc::new(RequestInner::new(req, matched_path, state).await?),
+            next: None,
+        })
+    }
+
+    /// Extracts a part of the request using [`FromRequest`].
+    pub fn extract<T>(&self) -> Result<T>
+    where
+        T: FromRequest,
+    {
+        T::from_request(self)
     }
 }
 
@@ -144,13 +162,13 @@ impl Deref for Request {
     type Target = RequestInner;
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &self.inner
     }
 }
 
 impl Borrow<RequestInner> for Request {
     fn borrow(&self) -> &RequestInner {
-        &self.0
+        &self.inner
     }
 }
 
@@ -158,6 +176,12 @@ impl Borrow<RequestInner> for Request {
 pub trait FromRequest: Sized {
     /// Performs the extraction from a request.
     fn from_request(req: &Request) -> Result<Self>;
+}
+
+impl FromRequest for Request {
+    fn from_request(req: &Request) -> Result<Self> {
+        Ok(req.clone())
+    }
 }
 
 impl FromRequest for BodyRaw {
@@ -302,6 +326,21 @@ where
         match req.state.get_cloned::<T>() {
             Some(state) => Ok(Self(state)),
             None => Err(Error::UnknownStateTypeError(type_name::<T>())),
+        }
+    }
+}
+
+impl FromRequest for LocalState {
+    fn from_request(req: &Request) -> Result<Self> {
+        Ok(req.local_state.clone())
+    }
+}
+
+impl FromRequest for NextFn {
+    fn from_request(req: &Request) -> Result<Self> {
+        match &req.next {
+            Some(next) => Ok(next.clone()),
+            None => Err(Error::NoNextFunction),
         }
     }
 }

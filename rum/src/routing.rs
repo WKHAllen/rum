@@ -404,14 +404,15 @@ impl CompleteRouteHandler {
             Some((first, rest)) => NextFn::new({
                 let first = first.clone();
                 let next = Self::generate_invoker_recursive(rest, handler);
-                move |req| {
+                move |mut req| {
                     let first = first.clone();
-                    let next = next.clone();
-                    async move { first.call(req, next).await }
+                    req.next = Some(next.clone());
+                    async move { first.call(req).await }
                 }
             }),
-            None => NextFn::new(move |req| {
+            None => NextFn::new(move |mut req| {
                 let handler = handler.clone();
+                req.next = None;
                 async move { handler.call(req).await }
             }),
         }

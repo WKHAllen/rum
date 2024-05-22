@@ -65,6 +65,10 @@ pub enum Error {
     /// An unknown state type was requested from the server state manager.
     #[error("unknown state type: '{0}'")]
     UnknownStateTypeError(&'static str),
+    /// A `NextFn` was attempted to be extracted from the request from within a
+    /// route handler function, where there is no next function.
+    #[error("there is no next function, as this is a route handler")]
+    NoNextFunction,
 }
 
 impl Error {
@@ -79,7 +83,8 @@ impl Error {
             | Self::HeaderParseError(_, _) => ErrorSource::Client,
             Self::ServerError(_)
             | Self::MissingPathParameterError(_)
-            | Self::UnknownStateTypeError(_) => ErrorSource::Server,
+            | Self::UnknownStateTypeError(_)
+            | Self::NoNextFunction => ErrorSource::Server,
         }
     }
 }

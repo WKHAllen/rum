@@ -4,6 +4,7 @@ use crate::typemap::TypeMap;
 use std::borrow::{Borrow, BorrowMut};
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
+use tokio::sync::Mutex;
 
 /// An extractor for a value of type `T` stored in the state management system.
 /// `T` must implement `Clone` in order to be used as a state. This usually
@@ -76,5 +77,30 @@ impl Deref for StateManager {
 impl Borrow<TypeMap> for StateManager {
     fn borrow(&self) -> &TypeMap {
         &self.0
+    }
+}
+
+/// The local state management system. This exists only for the lifetime of a
+/// request/response. It exists to enable communication between middleware and
+/// routers.
+#[derive(Debug, Clone, Default)]
+pub struct LocalState(Arc<Mutex<TypeMap>>);
+
+impl LocalState {
+    /// Creates a new empty local state manager.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Performs operations on the local state via mutable access to the
+    /// underlying type map. This handles all mutex locking behind the scenes.
+    pub async fn with<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&mut TypeMap) -> R,
+    {
+        let mut guard = self.0.lock().await;
+        let res = f(guard.borrow_mut());
+        drop(guard);
+        res
     }
 }

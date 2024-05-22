@@ -37,11 +37,11 @@ impl ErrorBody {
 #[derive(Debug, Clone)]
 pub struct ResponseInner {
     /// The response status code.
-    pub(crate) code: StatusCode,
+    pub code: StatusCode,
     /// The response body.
-    pub(crate) body: String,
+    pub body: String,
     /// The response headers.
-    pub(crate) headers: HashMap<String, String>,
+    pub headers: HashMap<String, String>,
 }
 
 impl Default for ResponseInner {

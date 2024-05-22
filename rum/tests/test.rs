@@ -54,16 +54,24 @@ async fn greet(
 async fn test() {
     let addr = "127.0.0.1:3000";
     let (shutdown_sender, shutdown_receiver) = shutdown_signal();
+    let (error_sender, mut error_receiver) = error_report_stream();
 
     spawn(async move {
         ctrl_c().await.unwrap();
         shutdown_sender.shutdown().await;
     });
 
+    spawn(async move {
+        while let Some(err) = error_receiver.next().await {
+            dbg!(err);
+        }
+    });
+
     Server::new()
         .route_group(RouteGroup::new("/api/v1").get("/greet", greet))
         .with_state(Counter::default())
         .with_graceful_shutdown(shutdown_receiver)
+        .with_error_reporting(error_sender)
         .serve(addr)
         .await
         .unwrap();

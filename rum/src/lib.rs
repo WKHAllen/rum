@@ -47,5 +47,5 @@ pub mod prelude {
         ShutdownSender,
     };
     pub use crate::state::State;
-    pub use rum_macros::handler;
+    pub use rum_macros::{handler, middleware};
 }

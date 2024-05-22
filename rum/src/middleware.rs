@@ -58,30 +58,28 @@ impl Fn<(Request,)> for NextFn {
 #[allow(clippy::type_complexity)]
 #[derive(Clone)]
 pub struct Middleware(
-    pub(crate)  Arc<
-        dyn Fn(Request, NextFn) -> Pin<Box<dyn Future<Output = Response> + Send>> + Send + Sync,
-    >,
+    pub(crate) Arc<dyn Fn(Request) -> Pin<Box<dyn Future<Output = Response> + Send>> + Send + Sync>,
 );
 
 impl Middleware {
     /// Creates middleware from the provided function.
     fn new<F, Fut>(middleware: F) -> Self
     where
-        F: Fn(Request, NextFn) -> Fut + Send + Sync + 'static,
+        F: Fn(Request) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Response> + Send + 'static,
     {
-        Self(Arc::new(move |req, next| Box::pin(middleware(req, next))))
+        Self(Arc::new(move |req| Box::pin(middleware(req))))
     }
 
     /// Calls the middleware.
-    pub(crate) async fn call(&self, req: Request, next: NextFn) -> Response {
-        (self.0)(req, next).await
+    pub(crate) async fn call(&self, req: Request) -> Response {
+        (self.0)(req).await
     }
 }
 
 impl<F, Fut> From<F> for Middleware
 where
-    F: Fn(Request, NextFn) -> Fut + Send + Sync + 'static,
+    F: Fn(Request) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = Response> + Send + 'static,
 {
     fn from(value: F) -> Self {
