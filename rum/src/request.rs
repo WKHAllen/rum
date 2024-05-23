@@ -3,16 +3,16 @@
 use crate::body::{BodyRaw, Json};
 use crate::error::{Error, Result};
 #[cfg(feature = "nightly")]
-use crate::header::{Header, HeaderOptional, ParseHeader};
-use crate::header::{HeaderMap, Headers};
+use crate::header::{Header, HeaderOptional};
+use crate::header::{HeaderMap, Headers, ParseHeader};
 use crate::http::HttpMethod;
 use crate::middleware::NextFn;
 #[cfg(feature = "nightly")]
-use crate::path::{ParsePathParam, PathParam};
-use crate::path::{PathParamMap, PathParams};
+use crate::path::PathParam;
+use crate::path::{ParsePathParam, PathParamMap, PathParams};
+use crate::query::{ParseQueryParam, QueryParamMap, QueryParams};
 #[cfg(feature = "nightly")]
-use crate::query::{ParseQueryParam, QueryParam, QueryParamOptional};
-use crate::query::{QueryParamMap, QueryParams};
+use crate::query::{QueryParam, QueryParamOptional};
 use crate::routing::{RoutePath, RoutePathMatched, RoutePathMatchedSegment};
 use crate::state::{LocalState, State, StateManager};
 use http_body_util::BodyExt;
