@@ -68,6 +68,7 @@ pub fn transform(item: TokenStream) -> TokenStream {
     let new_args = quote! { req: #main_crate::request::Request };
     let new_block = quote! {
         {
+            #[allow(clippy::needless_question_mark)]
             let ( #(#arg_idents),* ): ( #(#arg_types),* ) = match (move || -> #main_crate::error::Result<( #(#arg_types),* )> {
                 Ok(( #(#arg_from_requests),* ))
             })() {

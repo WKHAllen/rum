@@ -87,6 +87,11 @@ impl RequestInner {
         })
     }
 
+    /// Gets the raw request body.
+    pub fn body(&self) -> &[u8] {
+        &self.body
+    }
+
     /// Deserializes the JSON request body into an instance of `T`.
     pub fn body_json<T>(&self) -> Result<T>
     where
@@ -105,14 +110,44 @@ impl RequestInner {
         self.path.clone()
     }
 
+    /// Gets a path parameter value.
+    pub fn path_param(&self, name: &str) -> Result<&str> {
+        self.path_params.get(name)
+    }
+
+    /// Gets a path parameter value and attempts to parse it into `T`.
+    pub fn path_param_as<T>(&self, name: &str) -> Result<T>
+    where
+        T: ParsePathParam,
+    {
+        self.path_params.get_as(name)
+    }
+
     /// Gets a required query parameter value.
-    pub fn query(&self, query: &str) -> Result<&str> {
+    pub fn query_param(&self, query: &str) -> Result<&str> {
         self.query.get(query)
     }
 
+    /// Gets a required query parameter value and attempts to parse it into `T`.
+    pub fn query_param_as<T>(&self, query: &str) -> Result<T>
+    where
+        T: ParseQueryParam,
+    {
+        self.query.get_as(query)
+    }
+
     /// Gets an optional query parameter value.
-    pub fn query_optional(&self, query: &str) -> Option<&str> {
+    pub fn query_param_optional(&self, query: &str) -> Option<&str> {
         self.query.get_optional(query)
+    }
+
+    /// Gets an optional query parameter value and attempts to parse it into
+    /// `T`.
+    pub fn query_param_optional_as<T>(&self, query: &str) -> Result<Option<T>>
+    where
+        T: ParseQueryParam,
+    {
+        self.query.get_optional_as(query)
     }
 
     /// Gets a required header value.
@@ -120,9 +155,41 @@ impl RequestInner {
         self.headers.get(header)
     }
 
+    /// Gets a required header value and attempts to parse it into `T`.
+    pub fn header_as<T>(&self, header: &str) -> Result<T>
+    where
+        T: ParseHeader,
+    {
+        self.headers.get_as(header)
+    }
+
     /// Gets an optional header value.
     pub fn header_optional(&self, header: &str) -> Option<&str> {
         self.headers.get_optional(header)
+    }
+
+    /// Gets an optional header value and attempts to parse it into `T`.
+    pub fn header_optional_as<T>(&self, header: &str) -> Result<Option<T>>
+    where
+        T: ParseHeader,
+    {
+        self.headers.get_optional_as(header)
+    }
+
+    /// Gets a value from the global application state.
+    pub fn state_value<T>(&self) -> Result<T>
+    where
+        T: Clone + 'static,
+    {
+        match self.state.get_cloned::<T>() {
+            Some(state) => Ok(state),
+            None => Err(Error::UnknownStateTypeError(type_name::<T>())),
+        }
+    }
+
+    /// Gets the local state manager.
+    pub fn local_state(&self) -> LocalState {
+        self.local_state.clone()
     }
 }
 
@@ -261,7 +328,7 @@ where
     T: ParseQueryParam,
 {
     fn from_request(req: &Request) -> Result<Self> {
-        Ok(Self(T::parse(Q, req.query(Q)?)?))
+        Ok(Self(T::parse(Q, req.query_param(Q)?)?))
     }
 }
 
@@ -271,7 +338,7 @@ where
     T: ParseQueryParam,
 {
     fn from_request(req: &Request) -> Result<Self> {
-        Ok(Self(match req.query_optional(Q) {
+        Ok(Self(match req.query_param_optional(Q) {
             Some(value) => Some(T::parse(Q, value)?),
             None => None,
         }))

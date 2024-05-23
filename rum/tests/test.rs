@@ -25,6 +25,14 @@ struct GreetingResponse {
     my_header_opt: Option<String>,
 }
 
+#[middleware]
+async fn json_middleware(req: Request, next: NextFn) -> Response {
+    next(req)
+        .await
+        .header("Content-Type", "application/json")
+        .body_or("{}")
+}
+
 #[handler]
 async fn greet(
     greeting_request: Json<GreetingRequest>,
@@ -68,7 +76,11 @@ async fn test() {
     });
 
     Server::new()
-        .route_group(RouteGroup::new("/api/v1").get("/greet", greet))
+        .route_group(
+            RouteGroup::new("/api/v1")
+                .get("/greet", greet)
+                .with_middleware(json_middleware),
+        )
         .with_state(Counter::default())
         .with_graceful_shutdown(shutdown_receiver)
         .with_error_reporting(error_sender)

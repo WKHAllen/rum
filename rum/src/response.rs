@@ -34,7 +34,7 @@ impl ErrorBody {
 }
 
 /// The internal representation of an HTTP response.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ResponseInner {
     /// The response status code.
     pub code: StatusCode,
@@ -42,16 +42,6 @@ pub struct ResponseInner {
     pub body: String,
     /// The response headers.
     pub headers: HashMap<String, String>,
-}
-
-impl Default for ResponseInner {
-    fn default() -> Self {
-        Self {
-            code: StatusCode::Ok,
-            body: "{}".to_owned(),
-            headers: HashMap::new(),
-        }
-    }
 }
 
 /// An HTTP response.
@@ -82,6 +72,26 @@ impl Response {
     pub fn status_code(mut self, code: StatusCode) -> Self {
         if let Self::Ok(inner) = &mut self {
             inner.code = code;
+        }
+
+        self
+    }
+
+    /// Sets the response body string content.
+    pub fn body(mut self, body: &str) -> Self {
+        if let Self::Ok(inner) = &mut self {
+            body.clone_into(&mut inner.body);
+        }
+
+        self
+    }
+
+    /// Sets the response body string content if the body is empty.
+    pub fn body_or(mut self, body: &str) -> Self {
+        if let Self::Ok(inner) = &mut self {
+            if inner.body.is_empty() {
+                body.clone_into(&mut inner.body);
+            }
         }
 
         self
@@ -134,9 +144,7 @@ impl Into<HyperResponse<String>> for Response {
             ),
         };
 
-        let res = HyperResponse::builder()
-            .status(code.code())
-            .header("Content-Type", "application/json");
+        let res = HyperResponse::builder().status(code.code());
 
         let res = headers
             .into_iter()
