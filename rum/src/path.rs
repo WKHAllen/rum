@@ -125,13 +125,8 @@ where
     E: Display,
 {
     fn parse(name: &str, value: &str) -> Result<Self> {
-        match T::from_str(value) {
-            Ok(value_parsed) => Ok(value_parsed),
-            Err(e) => Err(Error::PathParameterParseError(
-                name.to_owned(),
-                e.to_string(),
-            )),
-        }
+        T::from_str(value)
+            .map_err(|err| Error::PathParameterParseError(name.to_owned(), err.to_string()))
     }
 }
 

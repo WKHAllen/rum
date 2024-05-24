@@ -11,6 +11,7 @@
 #![cfg_attr(feature = "nightly", feature(unboxed_closures))]
 
 pub mod body;
+pub mod cookie;
 pub mod error;
 pub mod header;
 pub mod http;
@@ -28,6 +29,9 @@ mod typemap;
 /// the crate.
 pub mod prelude {
     pub use crate::body::{BodyRaw, Json};
+    #[cfg(feature = "nightly")]
+    pub use crate::cookie::{Cookie, CookieOptional};
+    pub use crate::cookie::{CookieMap, Cookies, SetCookie};
     #[cfg(feature = "nightly")]
     pub use crate::header::{Header, HeaderOptional};
     pub use crate::header::{HeaderMap, Headers};

@@ -1,6 +1,9 @@
 //! Types involving HTTP requests.
 
 use crate::body::{BodyRaw, Json};
+#[cfg(feature = "nightly")]
+use crate::cookie::{Cookie, CookieOptional};
+use crate::cookie::{CookieMap, Cookies, ParseCookie};
 use crate::error::{Error, Result};
 #[cfg(feature = "nightly")]
 use crate::header::{Header, HeaderOptional};
@@ -17,10 +20,12 @@ use crate::routing::{RoutePath, RoutePathMatched, RoutePathMatchedSegment};
 use crate::state::{LocalState, State, StateManager};
 use http_body_util::BodyExt;
 use hyper::body::Incoming;
+use hyper::header::COOKIE;
 use hyper::Request as HyperRequest;
 use serde::de::DeserializeOwned;
 use std::any::type_name;
 use std::borrow::Borrow;
+use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::Arc;
 
@@ -39,6 +44,8 @@ pub struct RequestInner {
     query: QueryParamMap,
     /// The map of headers.
     headers: HeaderMap,
+    /// The map of cookies.
+    cookies: CookieMap,
     /// The global application state manager.
     state: StateManager,
     /// The local state manager.
@@ -72,16 +79,29 @@ impl RequestInner {
             query: QueryParamMap::from(head.uri.query()),
             headers: head
                 .headers
-                .into_iter()
-                .filter_map(|(maybe_name, maybe_value)| {
-                    maybe_name.and_then(|name| {
-                        maybe_value
-                            .to_str()
-                            .ok()
-                            .map(|value| (name.to_string(), value.to_owned()))
-                    })
+                .iter()
+                .filter_map(|(name, value)| {
+                    Some((name.to_string(), value.to_str().ok()?.to_owned()))
                 })
                 .collect(),
+            cookies: CookieMap::from(head.headers.get_all(COOKIE).into_iter().fold(
+                HashMap::new(),
+                |mut cookies, cookie| {
+                    if let Ok(cookie_str) = cookie.to_str() {
+                        cookie_str.split("; ").for_each(|single_cookie| {
+                            let mut split_cookie = single_cookie.split('=');
+
+                            if let (Some(name), Some(value)) =
+                                (split_cookie.next(), split_cookie.next())
+                            {
+                                cookies.insert(name.to_owned(), value.to_owned());
+                            }
+                        });
+                    }
+
+                    cookies
+                },
+            )),
             state,
             local_state: LocalState::new(),
         })
@@ -174,6 +194,32 @@ impl RequestInner {
         T: ParseHeader,
     {
         self.headers.get_optional_as(header)
+    }
+
+    /// Gets a required cookie value.
+    pub fn cookie(&self, cookie: &str) -> Result<&str> {
+        self.cookies.get(cookie)
+    }
+
+    /// Gets a required cookie value and attempts to parse it into `T`.
+    pub fn cookie_as<T>(&self, cookie: &str) -> Result<T>
+    where
+        T: ParseCookie,
+    {
+        self.cookies.get_as(cookie)
+    }
+
+    /// Gets an optional cookie value.
+    pub fn cookie_optional(&self, cookie: &str) -> Option<&str> {
+        self.cookies.get_optional(cookie)
+    }
+
+    /// Gets an optional cookie value and attempts to parse it into `T`.
+    pub fn cookie_optional_as<T>(&self, cookie: &str) -> Result<Option<T>>
+    where
+        T: ParseCookie,
+    {
+        self.cookies.get_optional_as(cookie)
     }
 
     /// Gets a value from the global application state.
@@ -380,6 +426,46 @@ where
     fn from_request(req: &Request) -> Result<Self> {
         Ok(Self(match req.header_optional(H) {
             Some(value) => Some(T::parse(H, value)?),
+            None => None,
+        }))
+    }
+}
+
+impl FromRequest for CookieMap {
+    fn from_request(req: &Request) -> Result<Self> {
+        Ok(req.cookies.clone())
+    }
+}
+
+impl<T> FromRequest for Cookies<T>
+where
+    T: DeserializeOwned,
+{
+    fn from_request(req: &Request) -> Result<Self> {
+        Ok(Self(serde_json::from_value(serde_json::to_value(
+            &*req.cookies.0,
+        )?)?))
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<const C: &'static str, T> FromRequest for Cookie<C, T>
+where
+    T: ParseCookie,
+{
+    fn from_request(req: &Request) -> Result<Self> {
+        Ok(Self(T::parse(C, req.cookie(C)?)?))
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<const C: &'static str, T> FromRequest for CookieOptional<C, T>
+where
+    T: ParseCookie,
+{
+    fn from_request(req: &Request) -> Result<Self> {
+        Ok(Self(match req.cookie_optional(C) {
+            Some(value) => Some(T::parse(C, value)?),
             None => None,
         }))
     }

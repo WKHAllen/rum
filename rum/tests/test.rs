@@ -33,6 +33,20 @@ async fn json_middleware(req: Request, next: NextFn) -> Response {
         .body_or("{}")
 }
 
+#[middleware]
+async fn set_cookie_middleware(
+    req: Request,
+    next: NextFn,
+    counter_cookie: CookieOptional<"counter", usize>,
+) -> Response {
+    let res = next(req).await;
+
+    match counter_cookie.into_inner() {
+        Some(count) => res.cookie(SetCookie::new("counter", count + 1)),
+        None => res.cookie(SetCookie::new("counter", 1)),
+    }
+}
+
 #[handler]
 async fn greet(
     greeting_request: Json<GreetingRequest>,
@@ -79,7 +93,8 @@ async fn test() {
         .route_group(
             RouteGroup::new("/api/v1")
                 .get("/greet", greet)
-                .with_middleware(json_middleware),
+                .with_middleware(json_middleware)
+                .with_middleware(set_cookie_middleware),
         )
         .with_state(Counter::default())
         .with_graceful_shutdown(shutdown_receiver)

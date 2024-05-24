@@ -53,6 +53,9 @@ pub enum Error {
     /// A header was missing from the request.
     #[error("missing header: '{0}'")]
     MissingHeaderError(String),
+    /// A cookie was missing from the request.
+    #[error("missing cookie: '{0}'")]
+    MissingCookieError(String),
     /// A path parameter failed parsing.
     #[error("failed to parse path parameter '{0}': {1}")]
     PathParameterParseError(String, String),
@@ -62,6 +65,9 @@ pub enum Error {
     /// A header failed parsing.
     #[error("failed to parse header '{0}': {1}")]
     HeaderParseError(String, String),
+    /// A cookie failed parsing.
+    #[error("failed to parse cookie '{0}': {1}")]
+    CookieParseError(String, String),
     /// An unknown state type was requested from the server state manager.
     #[error("unknown state type: '{0}'")]
     UnknownStateTypeError(&'static str),
@@ -78,9 +84,11 @@ impl Error {
             Self::JsonError(_)
             | Self::MissingQueryParameterError(_)
             | Self::MissingHeaderError(_)
+            | Self::MissingCookieError(_)
             | Self::PathParameterParseError(_, _)
             | Self::QueryParameterParseError(_, _)
-            | Self::HeaderParseError(_, _) => ErrorSource::Client,
+            | Self::HeaderParseError(_, _)
+            | Self::CookieParseError(_, _) => ErrorSource::Client,
             Self::ServerError(_)
             | Self::MissingPathParameterError(_)
             | Self::UnknownStateTypeError(_)

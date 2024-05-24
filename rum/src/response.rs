@@ -1,8 +1,10 @@
 //! Types involving HTTP responses.
 
 use crate::body::Json;
+use crate::cookie::SetCookie;
 use crate::error::{Error, ErrorSource, Result};
 use crate::http::StatusCode;
+use hyper::header::SET_COOKIE;
 use hyper::Response as HyperResponse;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -42,6 +44,8 @@ pub struct ResponseInner {
     pub body: String,
     /// The response headers.
     pub headers: HashMap<String, String>,
+    /// The cookies.
+    pub cookies: Vec<SetCookie>,
 }
 
 /// An HTTP response.
@@ -119,6 +123,15 @@ impl Response {
 
         self
     }
+
+    /// Sets a cookie value.
+    pub fn cookie(mut self, cookie: SetCookie) -> Self {
+        if let Self::Ok(inner) = &mut self {
+            inner.cookies.push(cookie);
+        }
+
+        self
+    }
 }
 
 impl Default for Response {
@@ -130,8 +143,8 @@ impl Default for Response {
 #[allow(clippy::from_over_into)]
 impl Into<HyperResponse<String>> for Response {
     fn into(self) -> HyperResponse<String> {
-        let (code, body, headers) = match self {
-            Self::Ok(inner) => (inner.code, inner.body, inner.headers),
+        let (code, body, headers, cookies) = match self {
+            Self::Ok(inner) => (inner.code, inner.body, inner.headers, inner.cookies),
             Self::Err(err) => (
                 err.source().response_status(),
                 ErrorBody::new(match err.source() {
@@ -141,6 +154,7 @@ impl Into<HyperResponse<String>> for Response {
                 .to_json()
                 .unwrap(),
                 HashMap::new(),
+                Vec::new(),
             ),
         };
 
@@ -149,6 +163,10 @@ impl Into<HyperResponse<String>> for Response {
         let res = headers
             .into_iter()
             .fold(res, |res, (name, value)| res.header(name, value));
+
+        let res = cookies.into_iter().fold(res, |res, cookie| {
+            res.header(SET_COOKIE, cookie.to_cookie_string())
+        });
 
         res.body(body).unwrap()
     }
