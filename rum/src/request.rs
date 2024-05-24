@@ -171,12 +171,12 @@ impl RequestInner {
     }
 
     /// Gets a required header value.
-    pub fn header(&self, header: &str) -> Result<&str> {
+    pub fn header(&self, header: &str) -> Result<&[String]> {
         self.headers.get(header)
     }
 
     /// Gets a required header value and attempts to parse it into `T`.
-    pub fn header_as<T>(&self, header: &str) -> Result<T>
+    pub fn header_as<T>(&self, header: &str) -> Result<Vec<T>>
     where
         T: ParseHeader,
     {
@@ -184,12 +184,12 @@ impl RequestInner {
     }
 
     /// Gets an optional header value.
-    pub fn header_optional(&self, header: &str) -> Option<&str> {
+    pub fn header_optional(&self, header: &str) -> Option<&[String]> {
         self.headers.get_optional(header)
     }
 
     /// Gets an optional header value and attempts to parse it into `T`.
-    pub fn header_optional_as<T>(&self, header: &str) -> Result<Option<T>>
+    pub fn header_optional_as<T>(&self, header: &str) -> Result<Option<Vec<T>>>
     where
         T: ParseHeader,
     {
@@ -414,7 +414,7 @@ where
     T: ParseHeader,
 {
     fn from_request(req: &Request) -> Result<Self> {
-        Ok(Self(T::parse(H, req.header(H)?)?))
+        Ok(Self(req.header_as(H)?))
     }
 }
 
@@ -424,10 +424,7 @@ where
     T: ParseHeader,
 {
     fn from_request(req: &Request) -> Result<Self> {
-        Ok(Self(match req.header_optional(H) {
-            Some(value) => Some(T::parse(H, value)?),
-            None => None,
-        }))
+        Ok(Self(req.header_optional_as(H)?))
     }
 }
 

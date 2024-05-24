@@ -12,13 +12,13 @@ use std::sync::Arc;
 
 /// A representation of a map of headers.
 #[derive(Debug, Clone, PartialEq, Default)]
-pub struct HeaderMap(pub(crate) Arc<HashMap<String, String>>);
+pub struct HeaderMap(pub(crate) Arc<HashMap<String, Vec<String>>>);
 
 impl HeaderMap {
     /// Gets a required header value, returning `Err` if the header is not
     /// present. This method is provided for convenience, since the error can be
     /// propagated using `?` from any route handler.
-    pub fn get(&self, header: &str) -> Result<&str> {
+    pub fn get(&self, header: &str) -> Result<&[String]> {
         self.get_optional(header)
             .ok_or(Error::MissingHeaderError(header.to_owned()))
     }
@@ -26,34 +26,40 @@ impl HeaderMap {
     /// Gets a required header value and attempts to parse it into `T`, where
     /// `T` is any type that implements [`ParseHeader`]. If the header is not
     /// present, or if parsing fails, `Err` is returned.
-    pub fn get_as<T>(&self, header: &str) -> Result<T>
+    pub fn get_as<T>(&self, header: &str) -> Result<Vec<T>>
     where
         T: ParseHeader,
     {
-        self.get(header).and_then(|value| T::parse(header, value))
+        self.get(header)
+            .and_then(|values| values.iter().map(|value| T::parse(header, value)).collect())
     }
 
     /// Gets an optional header value.
-    pub fn get_optional(&self, header: &str) -> Option<&str> {
-        self.0.get(header).map(|s| s.as_str())
+    pub fn get_optional(&self, header: &str) -> Option<&[String]> {
+        self.0.get(header).map(Borrow::borrow)
     }
 
     /// Gets an optional header value and attempts to parse it into `T`, where
     /// `T` is any type that implements [`ParseHeader`]. If parsing fails, `Err`
     /// is returned.
-    pub fn get_optional_as<T>(&self, header: &str) -> Result<Option<T>>
+    pub fn get_optional_as<T>(&self, header: &str) -> Result<Option<Vec<T>>>
     where
         T: ParseHeader,
     {
         match self.get_optional(header) {
-            Some(value) => Ok(Some(T::parse(header, value)?)),
+            Some(values) => Ok(Some(
+                values
+                    .iter()
+                    .map(|value| T::parse(header, value))
+                    .collect::<Result<_>>()?,
+            )),
             None => Ok(None),
         }
     }
 }
 
-impl From<HashMap<String, String>> for HeaderMap {
-    fn from(value: HashMap<String, String>) -> Self {
+impl From<HashMap<String, Vec<String>>> for HeaderMap {
+    fn from(value: HashMap<String, Vec<String>>) -> Self {
         Self(Arc::new(value))
     }
 }
@@ -71,8 +77,8 @@ where
 }
 
 impl<'a> IntoIterator for &'a HeaderMap {
-    type Item = (&'a String, &'a String);
-    type IntoIter = Iter<'a, String, String>;
+    type Item = (&'a String, &'a Vec<String>);
+    type IntoIter = Iter<'a, String, Vec<String>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter()
@@ -81,20 +87,32 @@ impl<'a> IntoIterator for &'a HeaderMap {
 
 impl FromIterator<(String, String)> for HeaderMap {
     fn from_iter<T: IntoIterator<Item = (String, String)>>(iter: T) -> Self {
+        Self(Arc::new(iter.into_iter().fold(
+            HashMap::new(),
+            |mut headers, (name, value)| {
+                headers.entry(name).or_default().push(value);
+                headers
+            },
+        )))
+    }
+}
+
+impl FromIterator<(String, Vec<String>)> for HeaderMap {
+    fn from_iter<T: IntoIterator<Item = (String, Vec<String>)>>(iter: T) -> Self {
         Self(Arc::new(iter.into_iter().collect()))
     }
 }
 
 impl Deref for HeaderMap {
-    type Target = HashMap<String, String>;
+    type Target = HashMap<String, Vec<String>>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl Borrow<HashMap<String, String>> for HeaderMap {
-    fn borrow(&self) -> &HashMap<String, String> {
+impl Borrow<HashMap<String, Vec<String>>> for HeaderMap {
+    fn borrow(&self) -> &HashMap<String, Vec<String>> {
         &self.0
     }
 }
@@ -181,7 +199,7 @@ where
 
 /// A single required request header.
 #[cfg(feature = "nightly")]
-pub struct Header<const H: &'static str, T = String>(pub(crate) T)
+pub struct Header<const H: &'static str, T = String>(pub(crate) Vec<T>)
 where
     T: ParseHeader;
 
@@ -191,7 +209,7 @@ where
     T: ParseHeader,
 {
     /// Moves the header value out of this wrapper.
-    pub fn into_inner(self) -> T {
+    pub fn into_inner(self) -> Vec<T> {
         self.0
     }
 }
@@ -201,7 +219,7 @@ impl<const H: &'static str, T> Deref for Header<H, T>
 where
     T: ParseHeader,
 {
-    type Target = T;
+    type Target = Vec<T>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -220,7 +238,7 @@ where
 
 /// A single optional request header.
 #[cfg(feature = "nightly")]
-pub struct HeaderOptional<const H: &'static str, T = String>(pub(crate) Option<T>)
+pub struct HeaderOptional<const H: &'static str, T = String>(pub(crate) Option<Vec<T>>)
 where
     T: ParseHeader;
 
@@ -230,7 +248,7 @@ where
     T: ParseHeader,
 {
     /// Moves the header value out of this wrapper.
-    pub fn into_inner(self) -> Option<T> {
+    pub fn into_inner(self) -> Option<Vec<T>> {
         self.0
     }
 }
@@ -240,7 +258,7 @@ impl<const H: &'static str, T> Deref for HeaderOptional<H, T>
 where
     T: ParseHeader,
 {
-    type Target = Option<T>;
+    type Target = Option<Vec<T>>;
 
     fn deref(&self) -> &Self::Target {
         &self.0

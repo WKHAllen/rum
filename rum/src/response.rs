@@ -43,7 +43,7 @@ pub struct ResponseInner {
     /// The response body.
     pub body: String,
     /// The response headers.
-    pub headers: HashMap<String, String>,
+    pub headers: HashMap<String, Vec<String>>,
     /// The cookies.
     pub cookies: Vec<SetCookie>,
 }
@@ -118,7 +118,11 @@ impl Response {
     /// Sets a response header.
     pub fn header(mut self, name: &str, value: &str) -> Self {
         if let Self::Ok(inner) = &mut self {
-            inner.headers.insert(name.to_owned(), value.to_owned());
+            inner
+                .headers
+                .entry(name.to_owned())
+                .or_default()
+                .push(value.to_owned());
         }
 
         self
@@ -160,9 +164,11 @@ impl Into<HyperResponse<String>> for Response {
 
         let res = HyperResponse::builder().status(code.code());
 
-        let res = headers
-            .into_iter()
-            .fold(res, |res, (name, value)| res.header(name, value));
+        let res = headers.into_iter().fold(res, |res, (name, values)| {
+            values
+                .into_iter()
+                .fold(res, |res, value| res.header(name.clone(), value))
+        });
 
         let res = cookies.into_iter().fold(res, |res, cookie| {
             res.header(SET_COOKIE, cookie.to_cookie_string())

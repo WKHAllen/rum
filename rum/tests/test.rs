@@ -21,8 +21,8 @@ struct GreetingResponse {
     count: usize,
     my_query: String,
     my_query_opt: Option<String>,
-    my_header: String,
-    my_header_opt: Option<String>,
+    my_header: Vec<String>,
+    my_header_opt: Option<Vec<String>>,
 }
 
 #[middleware]
@@ -39,12 +39,10 @@ async fn set_cookie_middleware(
     next: NextFn,
     counter_cookie: CookieOptional<"counter", usize>,
 ) -> Response {
-    let res = next(req).await;
-
-    match counter_cookie.into_inner() {
-        Some(count) => res.cookie(SetCookie::new("counter", count + 1)),
-        None => res.cookie(SetCookie::new("counter", 1)),
-    }
+    next(req).await.cookie(SetCookie::new(
+        "counter",
+        counter_cookie.into_inner().unwrap_or(0) + 1,
+    ))
 }
 
 #[handler]
