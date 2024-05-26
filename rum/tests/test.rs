@@ -26,14 +26,6 @@ struct GreetingResponse {
 }
 
 #[middleware]
-async fn json_middleware(req: Request, next: NextFn) -> Response {
-    next(req)
-        .await
-        .header("Content-Type", "application/json")
-        .body_or("{}")
-}
-
-#[middleware]
 async fn set_cookie_middleware(
     req: Request,
     next: NextFn,
@@ -91,7 +83,6 @@ async fn test() {
         .route_group(
             RouteGroup::new("/api/v1")
                 .get("/greet", greet)
-                .with_middleware(json_middleware)
                 .with_middleware(set_cookie_middleware),
         )
         .with_state(Counter::default())

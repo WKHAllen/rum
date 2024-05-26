@@ -190,12 +190,38 @@ impl IntoResponse for Response {
     }
 }
 
+impl IntoResponse for &str {
+    fn into_response(self) -> Response {
+        Response::new()
+            .body(self)
+            .header("Content-Type", "text/plain")
+    }
+}
+
+impl IntoResponse for String {
+    fn into_response(self) -> Response {
+        Response::new()
+            .body(self.as_str())
+            .header("Content-Type", "text/plain")
+    }
+}
+
+impl IntoResponse for &String {
+    fn into_response(self) -> Response {
+        Response::new()
+            .body(self)
+            .header("Content-Type", "text/plain")
+    }
+}
+
 impl<T> IntoResponse for Json<T>
 where
     T: Serialize,
 {
     fn into_response(self) -> Response {
-        Response::new().body_json(self.0)
+        Response::new()
+            .body_json(self.0)
+            .header("Content-Type", "application/json")
     }
 }
 
