@@ -1,7 +1,7 @@
 //! HTTP server building types.
 
 use crate::error::Error;
-use crate::http::{HttpMethod, StatusCode};
+use crate::http::HttpMethod;
 use crate::middleware::{Middleware, MiddlewareCollection};
 use crate::request::Request;
 use crate::response::{ErrorBody, Response};
@@ -105,7 +105,7 @@ impl Service<HyperRequest<Incoming>> for ServerService {
 
         Box::pin(async move {
             Ok(match matched_path_and_route {
-                Some((matched_path, route)) => {
+                Ok((matched_path, route)) => {
                     let req = Request::new(req, matched_path, state).await?;
                     let res = route.call(req).await;
 
@@ -119,9 +119,9 @@ impl Service<HyperRequest<Incoming>> for ServerService {
 
                     res
                 }
-                None => Response::new()
-                    .status_code(StatusCode::NotFound)
-                    .body_json(ErrorBody::new("Not found")),
+                Err(err) => Response::new()
+                    .status_code(err.response_status())
+                    .body_json(ErrorBody::new(err.response_status().message())),
             }
             .into())
         })

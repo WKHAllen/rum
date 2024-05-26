@@ -114,7 +114,7 @@ impl StatusCode {
             Self::PaymentRequired => "Payment Required",
             Self::Forbidden => "Forbidden",
             Self::NotFound => "Not Found",
-            Self::MethodNotAllowed => "MethodNotAllowed",
+            Self::MethodNotAllowed => "Method Not Allowed",
             Self::NotAcceptable => "Not Acceptable",
             Self::ProxyAuthenticationRequired => "Proxy Authentication Required",
             Self::RequestTimeout => "Request Timeout",

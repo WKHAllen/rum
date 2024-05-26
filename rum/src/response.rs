@@ -150,7 +150,7 @@ impl Into<HyperResponse<String>> for Response {
         let (code, body, headers, cookies) = match self {
             Self::Ok(inner) => (inner.code, inner.body, inner.headers, inner.cookies),
             Self::Err(err) => (
-                err.source().response_status(),
+                err.response_status(),
                 ErrorBody::new(match err.source() {
                     ErrorSource::Client => err.to_string(),
                     ErrorSource::Server => "An internal error occurred".to_owned(),

@@ -14,16 +14,6 @@ pub enum ErrorSource {
 }
 
 impl ErrorSource {
-    /// Returns the default HTTP status code for this error. For client errors
-    /// `400 Bad Request` is returned, and for server errors `500 Internal
-    /// Server Error` is returned.
-    pub fn response_status(&self) -> StatusCode {
-        match *self {
-            Self::Client => StatusCode::BadRequest,
-            Self::Server => StatusCode::InternalServerError,
-        }
-    }
-
     /// Is this a client error?
     pub fn is_client(&self) -> bool {
         matches!(*self, Self::Client)
@@ -75,6 +65,12 @@ pub enum Error {
     /// route handler function, where there is no next function.
     #[error("there is no next function, as this is a route handler")]
     NoNextFunction,
+    /// The requested path could not be found.
+    #[error("the requested path could not be found")]
+    NotFound,
+    /// The requested path exists, but the method requested is not allowed.
+    #[error("the requested method is not allowed")]
+    MethodNotAllowed,
 }
 
 impl Error {
@@ -88,11 +84,34 @@ impl Error {
             | Self::PathParameterParseError(_, _)
             | Self::QueryParameterParseError(_, _)
             | Self::HeaderParseError(_, _)
-            | Self::CookieParseError(_, _) => ErrorSource::Client,
+            | Self::CookieParseError(_, _)
+            | Self::NotFound
+            | Self::MethodNotAllowed => ErrorSource::Client,
             Self::ServerError(_)
             | Self::MissingPathParameterError(_)
             | Self::UnknownStateTypeError(_)
             | Self::NoNextFunction => ErrorSource::Server,
+        }
+    }
+
+    /// Returns the HTTP response status code that should be used when this
+    /// error occurs.
+    pub fn response_status(&self) -> StatusCode {
+        match *self {
+            Self::JsonError(_)
+            | Self::MissingQueryParameterError(_)
+            | Self::MissingHeaderError(_)
+            | Self::MissingCookieError(_)
+            | Self::PathParameterParseError(_, _)
+            | Self::QueryParameterParseError(_, _)
+            | Self::HeaderParseError(_, _)
+            | Self::CookieParseError(_, _) => StatusCode::BadRequest,
+            Self::NotFound => StatusCode::NotFound,
+            Self::MethodNotAllowed => StatusCode::MethodNotAllowed,
+            Self::ServerError(_)
+            | Self::MissingPathParameterError(_)
+            | Self::UnknownStateTypeError(_)
+            | Self::NoNextFunction => StatusCode::InternalServerError,
         }
     }
 }

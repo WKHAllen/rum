@@ -1,5 +1,6 @@
 //! Types involving request routing.
 
+use crate::error::{Error, Result};
 use crate::http::HttpMethod;
 use crate::middleware::{AppliedMiddleware, Middleware, MiddlewareCollection, NextFn};
 use crate::request::Request;
@@ -467,13 +468,14 @@ impl RouteLevel {
         method: HttpMethod,
         path: RoutePath,
         path_match: RoutePathMatched,
-    ) -> Option<(RoutePathMatched, CompleteRouteHandler)> {
+    ) -> Result<(RoutePathMatched, CompleteRouteHandler)> {
         match path.split_first() {
             None => self
                 .self_routes
                 .get(&method)
                 .cloned()
-                .map(|route| (path_match, route)),
+                .map(|route| (path_match, route))
+                .ok_or(Error::MethodNotAllowed),
             Some((first, rest)) => match first {
                 RoutePathSegment::Static(name) => match self.static_sub_routes.get(&name) {
                     Some(routes) => routes.get_recursive(
@@ -481,19 +483,17 @@ impl RouteLevel {
                         rest,
                         path_match.join(RoutePathMatchedSegment::Static(name)),
                     ),
-                    None => self
-                        .wildcard_sub_route
-                        .as_ref()
-                        .and_then(|(wildcard_name, routes)| {
-                            routes.get_recursive(
-                                method,
-                                rest,
-                                path_match.join(RoutePathMatchedSegment::Wildcard(
-                                    wildcard_name.clone(),
-                                    name,
-                                )),
-                            )
-                        }),
+                    None => match &self.wildcard_sub_route {
+                        Some((wildcard_name, routes)) => routes.get_recursive(
+                            method,
+                            rest,
+                            path_match.join(RoutePathMatchedSegment::Wildcard(
+                                wildcard_name.clone(),
+                                name,
+                            )),
+                        ),
+                        None => Err(Error::NotFound),
+                    },
                 },
                 RoutePathSegment::Wildcard(_) => unreachable!(),
             },
@@ -506,7 +506,7 @@ impl RouteLevel {
         &self,
         method: HttpMethod,
         path: RoutePath,
-    ) -> Option<(RoutePathMatched, CompleteRouteHandler)> {
+    ) -> Result<(RoutePathMatched, CompleteRouteHandler)> {
         self.get_recursive(method, path, RoutePathMatched::new())
     }
 
