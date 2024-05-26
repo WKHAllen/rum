@@ -36,7 +36,7 @@ impl HeaderMap {
 
     /// Gets an optional header value.
     pub fn get_optional(&self, header: &str) -> Option<&[String]> {
-        self.0.get(header).map(Borrow::borrow)
+        self.0.get(&header.to_lowercase()).map(Borrow::borrow)
     }
 
     /// Gets an optional header value and attempts to parse it into `T`, where

@@ -1,6 +1,7 @@
 //! Crate-level error types.
 
 use crate::http::StatusCode;
+use std::str::Utf8Error;
 use thiserror::Error;
 
 /// Notes whether it was the client or the server that caused an error. This is
@@ -28,6 +29,9 @@ impl ErrorSource {
 /// The crate-level error type.
 #[derive(Error, Debug)]
 pub enum Error {
+    /// An error occurred while parsing a request body into a string.
+    #[error("string parse error: {0}")]
+    StringError(#[from] Utf8Error),
     /// An error occurred while serializing or deserializing JSON data.
     #[error("json error: {0}")]
     JsonError(#[from] serde_json::Error),
@@ -71,13 +75,18 @@ pub enum Error {
     /// The requested path exists, but the method requested is not allowed.
     #[error("the requested method is not allowed")]
     MethodNotAllowed,
+    /// The request body content does not match the `Content-Type` header, or
+    /// the header is not present.
+    #[error("the request body content does not match the `Content-Type` header, or the header is not present")]
+    UnsupportedMediaType,
 }
 
 impl Error {
     /// Did this error occur because of a failure in the client or the server?
     pub fn source(&self) -> ErrorSource {
         match *self {
-            Self::JsonError(_)
+            Self::StringError(_)
+            | Self::JsonError(_)
             | Self::MissingQueryParameterError(_)
             | Self::MissingHeaderError(_)
             | Self::MissingCookieError(_)
@@ -86,7 +95,8 @@ impl Error {
             | Self::HeaderParseError(_, _)
             | Self::CookieParseError(_, _)
             | Self::NotFound
-            | Self::MethodNotAllowed => ErrorSource::Client,
+            | Self::MethodNotAllowed
+            | Self::UnsupportedMediaType => ErrorSource::Client,
             Self::ServerError(_)
             | Self::MissingPathParameterError(_)
             | Self::UnknownStateTypeError(_)
@@ -98,7 +108,8 @@ impl Error {
     /// error occurs.
     pub fn response_status(&self) -> StatusCode {
         match *self {
-            Self::JsonError(_)
+            Self::StringError(_)
+            | Self::JsonError(_)
             | Self::MissingQueryParameterError(_)
             | Self::MissingHeaderError(_)
             | Self::MissingCookieError(_)
@@ -108,6 +119,7 @@ impl Error {
             | Self::CookieParseError(_, _) => StatusCode::BadRequest,
             Self::NotFound => StatusCode::NotFound,
             Self::MethodNotAllowed => StatusCode::MethodNotAllowed,
+            Self::UnsupportedMediaType => StatusCode::UnsupportedMediaType,
             Self::ServerError(_)
             | Self::MissingPathParameterError(_)
             | Self::UnknownStateTypeError(_)

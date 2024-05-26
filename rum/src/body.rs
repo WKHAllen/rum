@@ -22,6 +22,49 @@ impl Borrow<[u8]> for BodyRaw {
     }
 }
 
+/// The HTTP request body as a string.
+#[derive(Debug, Clone)]
+pub struct BodyString(pub String);
+
+impl BodyString {
+    /// Moves the string out of this wrapper.
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+}
+
+impl Deref for BodyString {
+    type Target = String;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for BodyString {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl Borrow<String> for BodyString {
+    fn borrow(&self) -> &String {
+        &self.0
+    }
+}
+
+impl BorrowMut<String> for BodyString {
+    fn borrow_mut(&mut self) -> &mut String {
+        &mut self.0
+    }
+}
+
+impl Borrow<str> for BodyString {
+    fn borrow(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
 /// The HTTP request or response body as a JSON object represented by `T`. `T`
 /// must implement `serde`'s `DeserializeOwned` trait for requests, or
 /// `Serialize` trait for responses. This `deref`s to `T`, and can be moved out

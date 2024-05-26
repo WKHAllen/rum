@@ -121,7 +121,7 @@ impl Service<HyperRequest<Incoming>> for ServerService {
                 }
                 Err(err) => Response::new()
                     .status_code(err.response_status())
-                    .body_json(ErrorBody::new(err.response_status().message())),
+                    .body_json(ErrorBody::new(err.to_string())),
             }
             .into())
         })

@@ -1,6 +1,6 @@
 //! Types involving HTTP requests.
 
-use crate::body::{BodyRaw, Json};
+use crate::body::{BodyRaw, BodyString, Json};
 #[cfg(feature = "nightly")]
 use crate::cookie::{Cookie, CookieOptional};
 use crate::cookie::{CookieMap, Cookies, ParseCookie};
@@ -303,12 +303,36 @@ impl FromRequest for BodyRaw {
     }
 }
 
+impl FromRequest for BodyString {
+    fn from_request(req: &Request) -> Result<Self> {
+        match req.header_optional("Content-Type") {
+            Some(header) => {
+                if header.contains(&"text/plain".to_owned()) {
+                    Ok(Self(std::str::from_utf8(&req.body)?.to_owned()))
+                } else {
+                    Err(Error::UnsupportedMediaType)
+                }
+            }
+            None => Err(Error::UnsupportedMediaType),
+        }
+    }
+}
+
 impl<T> FromRequest for Json<T>
 where
     T: DeserializeOwned,
 {
     fn from_request(req: &Request) -> Result<Self> {
-        Ok(Self(serde_json::from_slice(&req.body)?))
+        match req.header_optional("Content-Type") {
+            Some(header) => {
+                if header.contains(&"application/json".to_owned()) {
+                    Ok(Self(serde_json::from_slice(&req.body)?))
+                } else {
+                    Err(Error::UnsupportedMediaType)
+                }
+            }
+            None => Err(Error::UnsupportedMediaType),
+        }
     }
 }
 

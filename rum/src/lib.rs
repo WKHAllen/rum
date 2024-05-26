@@ -28,7 +28,7 @@ mod typemap;
 /// The crate prelude. This contains the most useful functions and types from
 /// the crate.
 pub mod prelude {
-    pub use crate::body::{BodyRaw, Json};
+    pub use crate::body::{BodyRaw, BodyString, Json};
     #[cfg(feature = "nightly")]
     pub use crate::cookie::{Cookie, CookieOptional};
     pub use crate::cookie::{CookieMap, Cookies, SetCookie};
