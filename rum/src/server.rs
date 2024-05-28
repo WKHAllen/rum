@@ -52,23 +52,42 @@ pub fn shutdown_signal() -> (ShutdownSender, ShutdownReceiver) {
 
 /// The sending half of an error reporting channel.
 #[derive(Debug, Clone)]
-pub struct ErrorSender(UnboundedSender<Arc<Error>>);
+pub struct ErrorSender(UnboundedSender<Option<Arc<Error>>>);
 
 impl ErrorSender {
     /// Sends an error through the error reporting channel.
     pub fn report(&self, err: Arc<Error>) {
-        _ = self.0.send(err);
+        _ = self.0.send(Some(err));
+    }
+
+    /// Closes the error reporting channel.
+    pub fn close(&self) {
+        _ = self.0.send(None);
     }
 }
 
 /// The receiving half of an error reporting channel.
 #[derive(Debug)]
-pub struct ErrorReceiver(UnboundedReceiver<Arc<Error>>);
+pub enum ErrorReceiver {
+    /// The server is running, and errors can still be received.
+    Active(UnboundedReceiver<Option<Arc<Error>>>),
+    /// The server has been closed.
+    Done,
+}
 
 impl ErrorReceiver {
     /// Waits to receive the next error from the server.
     pub async fn next(&mut self) -> Option<Arc<Error>> {
-        self.0.recv().await
+        match self {
+            Self::Active(receiver) => match receiver.recv().await.flatten() {
+                Some(err) => Some(err),
+                None => {
+                    *self = Self::Done;
+                    None
+                }
+            },
+            Self::Done => None,
+        }
     }
 }
 
@@ -77,7 +96,7 @@ impl ErrorReceiver {
 /// causing the process to run out of memory.
 pub fn error_report_stream() -> (ErrorSender, ErrorReceiver) {
     let (tx, rx) = unbounded_channel();
-    (ErrorSender(tx), ErrorReceiver(rx))
+    (ErrorSender(tx), ErrorReceiver::Active(rx))
 }
 
 /// The internal server service managed by the `hyper` runtime.
@@ -302,9 +321,16 @@ impl Server {
     where
         A: ToSocketAddrs,
     {
+        let listener = TcpListener::bind(addr).await?;
+        self.serve_with(listener).await;
+
+        Ok(())
+    }
+
+    /// Starts the server running on the given TCP listener.
+    pub async fn serve_with(self, listener: TcpListener) {
         let routes = Arc::new(self.routes.into_route_level());
         let state = Arc::new(self.state);
-        let listener = TcpListener::bind(addr).await?;
         let mut shutdown_receiver = self
             .shutdown_receiver
             .unwrap_or_else(|| shutdown_signal().1);
@@ -341,6 +367,8 @@ impl Server {
             });
         }
 
-        Ok(())
+        if let Some(error_sender) = self.error_sender {
+            error_sender.close();
+        }
     }
 }

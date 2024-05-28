@@ -184,3 +184,20 @@ impl From<&Method> for HttpMethod {
         }
     }
 }
+
+#[allow(clippy::from_over_into)]
+impl Into<Method> for HttpMethod {
+    fn into(self) -> Method {
+        match self {
+            Self::Get => Method::GET,
+            Self::Head => Method::HEAD,
+            Self::Post => Method::POST,
+            Self::Put => Method::PUT,
+            Self::Delete => Method::DELETE,
+            Self::Connect => Method::CONNECT,
+            Self::Options => Method::OPTIONS,
+            Self::Trace => Method::TRACE,
+            Self::Patch => Method::PATCH,
+        }
+    }
+}
