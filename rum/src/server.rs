@@ -1,7 +1,7 @@
 //! HTTP server building types.
 
 use crate::error::Error;
-use crate::http::HttpMethod;
+use crate::http::Method;
 use crate::middleware::{Middleware, MiddlewareCollection};
 use crate::request::Request;
 use crate::response::{ErrorBody, Response};
@@ -116,7 +116,7 @@ impl Service<HyperRequest<Incoming>> for ServerService {
         Pin<Box<dyn Future<Output = std::result::Result<Self::Response, Self::Error>> + Send>>;
 
     fn call(&self, req: HyperRequest<Incoming>) -> Self::Future {
-        let method = HttpMethod::from(req.method());
+        let method = Method::from(req.method());
         let path = RoutePath::from(req.uri().path());
         let matched_path_and_route = self.routes.get(method, path);
         let state = self.state.clone();
@@ -170,7 +170,7 @@ impl Server {
     }
 
     /// Registers a route within the server.
-    pub fn route<P, R>(mut self, method: HttpMethod, path: P, route: R) -> Self
+    pub fn route<P, R>(mut self, method: Method, path: P, route: R) -> Self
     where
         P: Into<RoutePath>,
         R: Into<RouteHandler>,
@@ -185,85 +185,85 @@ impl Server {
         self
     }
 
-    /// Shorthand for `.route(HttpMethod::Get, ...)`.
+    /// Shorthand for `.route(Method::GET, ...)`.
     pub fn get<P, R>(self, path: P, route: R) -> Self
     where
         P: Into<RoutePath>,
         R: Into<RouteHandler>,
     {
-        self.route(HttpMethod::Get, path, route)
+        self.route(Method::GET, path, route)
     }
 
-    /// Shorthand for `.route(HttpMethod::Head, ...)`.
+    /// Shorthand for `.route(Method::HEAD, ...)`.
     pub fn head<P, R>(self, path: P, route: R) -> Self
     where
         P: Into<RoutePath>,
         R: Into<RouteHandler>,
     {
-        self.route(HttpMethod::Head, path, route)
+        self.route(Method::HEAD, path, route)
     }
 
-    /// Shorthand for `.route(HttpMethod::Post, ...)`.
+    /// Shorthand for `.route(Method::POST, ...)`.
     pub fn post<P, R>(self, path: P, route: R) -> Self
     where
         P: Into<RoutePath>,
         R: Into<RouteHandler>,
     {
-        self.route(HttpMethod::Post, path, route)
+        self.route(Method::POST, path, route)
     }
 
-    /// Shorthand for `.route(HttpMethod::Put, ...)`.
+    /// Shorthand for `.route(Method::PUT, ...)`.
     pub fn put<P, R>(self, path: P, route: R) -> Self
     where
         P: Into<RoutePath>,
         R: Into<RouteHandler>,
     {
-        self.route(HttpMethod::Put, path, route)
+        self.route(Method::PUT, path, route)
     }
 
-    /// Shorthand for `.route(HttpMethod::Delete, ...)`.
+    /// Shorthand for `.route(Method::DELETE, ...)`.
     pub fn delete<P, R>(self, path: P, route: R) -> Self
     where
         P: Into<RoutePath>,
         R: Into<RouteHandler>,
     {
-        self.route(HttpMethod::Delete, path, route)
+        self.route(Method::DELETE, path, route)
     }
 
-    /// Shorthand for `.route(HttpMethod::Connect, ...)`.
+    /// Shorthand for `.route(Method::CONNECT, ...)`.
     pub fn connect<P, R>(self, path: P, route: R) -> Self
     where
         P: Into<RoutePath>,
         R: Into<RouteHandler>,
     {
-        self.route(HttpMethod::Connect, path, route)
+        self.route(Method::CONNECT, path, route)
     }
 
-    /// Shorthand for `.route(HttpMethod::Options, ...)`.
+    /// Shorthand for `.route(Method::OPTIONS, ...)`.
     pub fn options<P, R>(self, path: P, route: R) -> Self
     where
         P: Into<RoutePath>,
         R: Into<RouteHandler>,
     {
-        self.route(HttpMethod::Options, path, route)
+        self.route(Method::OPTIONS, path, route)
     }
 
-    /// Shorthand for `.route(HttpMethod::Trace, ...)`.
+    /// Shorthand for `.route(Method::TRACE, ...)`.
     pub fn trace<P, R>(self, path: P, route: R) -> Self
     where
         P: Into<RoutePath>,
         R: Into<RouteHandler>,
     {
-        self.route(HttpMethod::Trace, path, route)
+        self.route(Method::TRACE, path, route)
     }
 
-    /// Shorthand for `.route(HttpMethod::Patch, ...)`.
+    /// Shorthand for `.route(Method::PATCH, ...)`.
     pub fn patch<P, R>(self, path: P, route: R) -> Self
     where
         P: Into<RoutePath>,
         R: Into<RouteHandler>,
     {
-        self.route(HttpMethod::Patch, path, route)
+        self.route(Method::PATCH, path, route)
     }
 
     /// Register middleware to be used on all routes at this level and all route

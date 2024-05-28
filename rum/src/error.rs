@@ -116,14 +116,14 @@ impl Error {
             | Self::PathParameterParseError(_, _)
             | Self::QueryParameterParseError(_, _)
             | Self::HeaderParseError(_, _)
-            | Self::CookieParseError(_, _) => StatusCode::BadRequest,
-            Self::NotFound => StatusCode::NotFound,
-            Self::MethodNotAllowed => StatusCode::MethodNotAllowed,
-            Self::UnsupportedMediaType => StatusCode::UnsupportedMediaType,
+            | Self::CookieParseError(_, _) => StatusCode::BAD_REQUEST,
+            Self::NotFound => StatusCode::NOT_FOUND,
+            Self::MethodNotAllowed => StatusCode::METHOD_NOT_ALLOWED,
+            Self::UnsupportedMediaType => StatusCode::UNSUPPORTED_MEDIA_TYPE,
             Self::ServerError(_)
             | Self::MissingPathParameterError(_)
             | Self::UnknownStateTypeError(_)
-            | Self::NoNextFunction => StatusCode::InternalServerError,
+            | Self::NoNextFunction => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }

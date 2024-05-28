@@ -66,7 +66,7 @@ struct TestServerHandle {
 impl TestServerHandle {
     pub async fn query<F>(
         &self,
-        method: HttpMethod,
+        method: Method,
         path: &str,
         config_fn: F,
     ) -> reqwest::Result<reqwest::Response>
@@ -74,7 +74,7 @@ impl TestServerHandle {
         F: FnOnce(reqwest::RequestBuilder) -> reqwest::RequestBuilder,
     {
         let req = self.client.request(
-            method.into(),
+            method,
             format!(
                 "http://localhost:{}/{}",
                 self.port,
@@ -89,7 +89,7 @@ impl TestServerHandle {
 
     pub async fn query_as<T, F>(
         &self,
-        method: HttpMethod,
+        method: Method,
         path: &str,
         config_fn: F,
     ) -> reqwest::Result<T>
@@ -104,7 +104,7 @@ impl TestServerHandle {
     where
         F: FnOnce(reqwest::RequestBuilder) -> reqwest::RequestBuilder,
     {
-        self.query(HttpMethod::Get, path, config_fn).await
+        self.query(Method::GET, path, config_fn).await
     }
 
     pub async fn get_as<T, F>(&self, path: &str, config_fn: F) -> reqwest::Result<T>
@@ -112,14 +112,14 @@ impl TestServerHandle {
         T: DeserializeOwned,
         F: FnOnce(reqwest::RequestBuilder) -> reqwest::RequestBuilder,
     {
-        self.query_as(HttpMethod::Get, path, config_fn).await
+        self.query_as(Method::GET, path, config_fn).await
     }
 
     pub async fn post<F>(&self, path: &str, config_fn: F) -> reqwest::Result<reqwest::Response>
     where
         F: FnOnce(reqwest::RequestBuilder) -> reqwest::RequestBuilder,
     {
-        self.query(HttpMethod::Post, path, config_fn).await
+        self.query(Method::POST, path, config_fn).await
     }
 
     pub async fn post_as<T, F>(&self, path: &str, config_fn: F) -> reqwest::Result<T>
@@ -127,14 +127,14 @@ impl TestServerHandle {
         T: DeserializeOwned,
         F: FnOnce(reqwest::RequestBuilder) -> reqwest::RequestBuilder,
     {
-        self.query_as(HttpMethod::Post, path, config_fn).await
+        self.query_as(Method::POST, path, config_fn).await
     }
 
     pub async fn put<F>(&self, path: &str, config_fn: F) -> reqwest::Result<reqwest::Response>
     where
         F: FnOnce(reqwest::RequestBuilder) -> reqwest::RequestBuilder,
     {
-        self.query(HttpMethod::Put, path, config_fn).await
+        self.query(Method::PUT, path, config_fn).await
     }
 
     pub async fn put_as<T, F>(&self, path: &str, config_fn: F) -> reqwest::Result<T>
@@ -142,14 +142,14 @@ impl TestServerHandle {
         T: DeserializeOwned,
         F: FnOnce(reqwest::RequestBuilder) -> reqwest::RequestBuilder,
     {
-        self.query_as(HttpMethod::Put, path, config_fn).await
+        self.query_as(Method::PUT, path, config_fn).await
     }
 
     pub async fn patch<F>(&self, path: &str, config_fn: F) -> reqwest::Result<reqwest::Response>
     where
         F: FnOnce(reqwest::RequestBuilder) -> reqwest::RequestBuilder,
     {
-        self.query(HttpMethod::Patch, path, config_fn).await
+        self.query(Method::PATCH, path, config_fn).await
     }
 
     pub async fn patch_as<T, F>(&self, path: &str, config_fn: F) -> reqwest::Result<T>
@@ -157,14 +157,14 @@ impl TestServerHandle {
         T: DeserializeOwned,
         F: FnOnce(reqwest::RequestBuilder) -> reqwest::RequestBuilder,
     {
-        self.query_as(HttpMethod::Patch, path, config_fn).await
+        self.query_as(Method::PATCH, path, config_fn).await
     }
 
     pub async fn delete<F>(&self, path: &str, config_fn: F) -> reqwest::Result<reqwest::Response>
     where
         F: FnOnce(reqwest::RequestBuilder) -> reqwest::RequestBuilder,
     {
-        self.query(HttpMethod::Delete, path, config_fn).await
+        self.query(Method::DELETE, path, config_fn).await
     }
 
     pub async fn delete_as<T, F>(&self, path: &str, config_fn: F) -> reqwest::Result<T>
@@ -172,7 +172,7 @@ impl TestServerHandle {
         T: DeserializeOwned,
         F: FnOnce(reqwest::RequestBuilder) -> reqwest::RequestBuilder,
     {
-        self.query_as(HttpMethod::Delete, path, config_fn).await
+        self.query_as(Method::DELETE, path, config_fn).await
     }
 
     pub async fn stop(mut self) -> Vec<Arc<Error>> {

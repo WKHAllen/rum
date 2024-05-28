@@ -162,7 +162,7 @@ impl Into<HyperResponse<String>> for Response {
             ),
         };
 
-        let res = HyperResponse::builder().status(code.code());
+        let res = HyperResponse::builder().status(code);
 
         let res = headers.into_iter().fold(res, |res, (name, values)| {
             values

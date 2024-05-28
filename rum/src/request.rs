@@ -8,7 +8,7 @@ use crate::error::{Error, Result};
 #[cfg(feature = "nightly")]
 use crate::header::{Header, HeaderOptional};
 use crate::header::{HeaderMap, Headers, ParseHeader};
-use crate::http::HttpMethod;
+use crate::http::Method;
 use crate::middleware::NextFn;
 #[cfg(feature = "nightly")]
 use crate::path::PathParam;
@@ -35,7 +35,7 @@ pub struct RequestInner {
     /// The raw request body.
     body: Arc<[u8]>,
     /// The request method.
-    method: HttpMethod,
+    method: Method,
     /// The request path.
     path: RoutePath,
     /// The map of path parameters.
@@ -63,7 +63,7 @@ impl RequestInner {
 
         Ok(Self {
             body: Arc::from(body.collect().await?.to_bytes().to_vec()),
-            method: HttpMethod::from(&head.method),
+            method: Method::from(&head.method),
             path: RoutePath::from(head.uri.path()),
             path_params: PathParamMap(Arc::new(
                 matched_path
@@ -121,8 +121,8 @@ impl RequestInner {
     }
 
     /// Gets the request method.
-    pub fn method(&self) -> HttpMethod {
-        self.method
+    pub fn method(&self) -> &Method {
+        &self.method
     }
 
     /// Gets the request path.
@@ -336,9 +336,9 @@ where
     }
 }
 
-impl FromRequest for HttpMethod {
+impl FromRequest for Method {
     fn from_request(req: &Request) -> Result<Self> {
-        Ok(req.method)
+        Ok(req.method.clone())
     }
 }
 

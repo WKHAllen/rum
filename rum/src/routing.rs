@@ -1,7 +1,7 @@
 //! Types involving request routing.
 
 use crate::error::{Error, Result};
-use crate::http::HttpMethod;
+use crate::http::Method;
 use crate::middleware::{AppliedMiddleware, Middleware, MiddlewareCollection, NextFn};
 use crate::request::Request;
 use crate::response::Response;
@@ -448,7 +448,7 @@ impl From<RouteHandler> for CompleteRouteHandler {
 #[derive(Clone, Default)]
 pub struct RouteLevel {
     /// All routes that exist at this level of the routing tree.
-    self_routes: HashMap<HttpMethod, CompleteRouteHandler>,
+    self_routes: HashMap<Method, CompleteRouteHandler>,
     /// All static subroutes.
     static_sub_routes: HashMap<String, Self>,
     /// An optional named wildcard subroute.
@@ -465,7 +465,7 @@ impl RouteLevel {
     /// matched route path.
     fn get_recursive(
         &self,
-        method: HttpMethod,
+        method: Method,
         path: RoutePath,
         path_match: RoutePathMatched,
     ) -> Result<(RoutePathMatched, CompleteRouteHandler)> {
@@ -504,14 +504,14 @@ impl RouteLevel {
     /// tree.
     pub fn get(
         &self,
-        method: HttpMethod,
+        method: Method,
         path: RoutePath,
     ) -> Result<(RoutePathMatched, CompleteRouteHandler)> {
         self.get_recursive(method, path, RoutePathMatched::new())
     }
 
     /// Adds a route handler to the route tree.
-    pub fn add(&mut self, method: HttpMethod, path: RoutePath, handler: CompleteRouteHandler) {
+    pub fn add(&mut self, method: Method, path: RoutePath, handler: CompleteRouteHandler) {
         match path.split_first() {
             None => {
                 self.self_routes.insert(method, handler);
@@ -551,7 +551,7 @@ impl RouteLevel {
     fn flatten_recursive(
         self,
         subpath: RoutePath,
-    ) -> Vec<(HttpMethod, RoutePath, CompleteRouteHandler)> {
+    ) -> Vec<(Method, RoutePath, CompleteRouteHandler)> {
         let mut routes = Vec::new();
 
         for (method, route) in self.self_routes {
@@ -574,13 +574,13 @@ impl RouteLevel {
     }
 
     /// Turns `self` into a flat collection of routes.
-    pub fn flatten(self) -> Vec<(HttpMethod, RoutePath, CompleteRouteHandler)> {
+    pub fn flatten(self) -> Vec<(Method, RoutePath, CompleteRouteHandler)> {
         self.flatten_recursive(RoutePath::new())
     }
 }
 
 impl IntoIterator for RouteLevel {
-    type Item = (HttpMethod, RoutePath, CompleteRouteHandler);
+    type Item = (Method, RoutePath, CompleteRouteHandler);
     type IntoIter = IntoIter<Self::Item>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -600,7 +600,7 @@ pub struct RouteGroup {
     /// The path of the route group.
     pub(crate) path: RoutePath,
     /// The collection of routes within the group.
-    pub(crate) routes: HashMap<(HttpMethod, RoutePath), RouteHandler>,
+    pub(crate) routes: HashMap<(Method, RoutePath), RouteHandler>,
     /// The collection of route groups within the group.
     pub(crate) groups: Vec<Self>,
     /// The collection of all registered middleware.
@@ -627,7 +627,7 @@ impl RouteGroup {
     }
 
     /// Registers a route within the route group.
-    pub fn route<P, R>(mut self, method: HttpMethod, path: P, route: R) -> Self
+    pub fn route<P, R>(mut self, method: Method, path: P, route: R) -> Self
     where
         P: Into<RoutePath>,
         R: Into<RouteHandler>,
@@ -642,85 +642,85 @@ impl RouteGroup {
         self
     }
 
-    /// Shorthand for `.route(HttpMethod::Get, ...)`.
+    /// Shorthand for `.route(Method::GET, ...)`.
     pub fn get<P, R>(self, path: P, route: R) -> Self
     where
         P: Into<RoutePath>,
         R: Into<RouteHandler>,
     {
-        self.route(HttpMethod::Get, path, route)
+        self.route(Method::GET, path, route)
     }
 
-    /// Shorthand for `.route(HttpMethod::Head, ...)`.
+    /// Shorthand for `.route(Method::HEAD, ...)`.
     pub fn head<P, R>(self, path: P, route: R) -> Self
     where
         P: Into<RoutePath>,
         R: Into<RouteHandler>,
     {
-        self.route(HttpMethod::Head, path, route)
+        self.route(Method::HEAD, path, route)
     }
 
-    /// Shorthand for `.route(HttpMethod::Post, ...)`.
+    /// Shorthand for `.route(Method::POST, ...)`.
     pub fn post<P, R>(self, path: P, route: R) -> Self
     where
         P: Into<RoutePath>,
         R: Into<RouteHandler>,
     {
-        self.route(HttpMethod::Post, path, route)
+        self.route(Method::POST, path, route)
     }
 
-    /// Shorthand for `.route(HttpMethod::Put, ...)`.
+    /// Shorthand for `.route(Method::PUT, ...)`.
     pub fn put<P, R>(self, path: P, route: R) -> Self
     where
         P: Into<RoutePath>,
         R: Into<RouteHandler>,
     {
-        self.route(HttpMethod::Put, path, route)
+        self.route(Method::PUT, path, route)
     }
 
-    /// Shorthand for `.route(HttpMethod::Delete, ...)`.
+    /// Shorthand for `.route(Method::DELETE, ...)`.
     pub fn delete<P, R>(self, path: P, route: R) -> Self
     where
         P: Into<RoutePath>,
         R: Into<RouteHandler>,
     {
-        self.route(HttpMethod::Delete, path, route)
+        self.route(Method::DELETE, path, route)
     }
 
-    /// Shorthand for `.route(HttpMethod::Connect, ...)`.
+    /// Shorthand for `.route(Method::CONNECT, ...)`.
     pub fn connect<P, R>(self, path: P, route: R) -> Self
     where
         P: Into<RoutePath>,
         R: Into<RouteHandler>,
     {
-        self.route(HttpMethod::Connect, path, route)
+        self.route(Method::CONNECT, path, route)
     }
 
-    /// Shorthand for `.route(HttpMethod::Options, ...)`.
+    /// Shorthand for `.route(Method::OPTIONS, ...)`.
     pub fn options<P, R>(self, path: P, route: R) -> Self
     where
         P: Into<RoutePath>,
         R: Into<RouteHandler>,
     {
-        self.route(HttpMethod::Options, path, route)
+        self.route(Method::OPTIONS, path, route)
     }
 
-    /// Shorthand for `.route(HttpMethod::Trace, ...)`.
+    /// Shorthand for `.route(Method::TRACE, ...)`.
     pub fn trace<P, R>(self, path: P, route: R) -> Self
     where
         P: Into<RoutePath>,
         R: Into<RouteHandler>,
     {
-        self.route(HttpMethod::Trace, path, route)
+        self.route(Method::TRACE, path, route)
     }
 
-    /// Shorthand for `.route(HttpMethod::Patch, ...)`.
+    /// Shorthand for `.route(Method::PATCH, ...)`.
     pub fn patch<P, R>(self, path: P, route: R) -> Self
     where
         P: Into<RoutePath>,
         R: Into<RouteHandler>,
     {
-        self.route(HttpMethod::Patch, path, route)
+        self.route(Method::PATCH, path, route)
     }
 
     /// Register middleware to be used on all routes at this level and all route

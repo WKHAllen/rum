@@ -14,7 +14,6 @@ pub mod body;
 pub mod cookie;
 pub mod error;
 pub mod header;
-pub mod http;
 pub mod middleware;
 pub mod path;
 pub mod query;
@@ -24,6 +23,11 @@ pub mod routing;
 pub mod server;
 pub mod state;
 mod typemap;
+
+/// General HTTP-related types.
+pub mod http {
+    pub use http::{Method, StatusCode};
+}
 
 /// The crate prelude. This contains the most useful functions and types from
 /// the crate.
@@ -35,7 +39,7 @@ pub mod prelude {
     #[cfg(feature = "nightly")]
     pub use crate::header::{Header, HeaderOptional};
     pub use crate::header::{HeaderMap, Headers};
-    pub use crate::http::{HttpMethod, StatusCode};
+    pub use crate::http::{Method, StatusCode};
     pub use crate::middleware::{Middleware, NextFn};
     #[cfg(feature = "nightly")]
     pub use crate::path::PathParam;

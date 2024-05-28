@@ -678,6 +678,7 @@ dependencies = [
 name = "rum"
 version = "0.1.0"
 dependencies = [
+ "http",
  "http-body-util",
  "hyper",
  "hyper-util",
