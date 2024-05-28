@@ -39,7 +39,7 @@ impl TestServer {
 
     pub async fn start(self) -> io::Result<TestServerHandle> {
         let server = self.server;
-        let listener = TcpListener::bind("127.0.0.1:3000").await?;
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
         let port = listener.local_addr()?.port();
 
         let serve_task = spawn(async move { server.serve_with(listener).await });
@@ -199,15 +199,105 @@ macro_rules! assert_no_server_errors {
 
 #[tokio::test]
 async fn test_automatic_200() {
+    #[handler]
+    async fn res_200() {}
+
     let server = TestServer::new()
-        .config(|server| server.get("/test", |_| async move { Response::new() }))
+        .config(|server| server.get("/test", res_200))
         .start()
         .await
         .unwrap();
 
     let res = server.get("/test", |req| req).await.unwrap();
-    assert_eq!(res.status(), reqwest::StatusCode::OK);
+    assert_eq!(res.status(), StatusCode::OK);
 
     let errors = server.stop().await;
     assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_automatic_400() {
+    #[handler]
+    async fn res_400(_: QueryParam<"missing">) {}
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", res_400))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_automatic_404() {
+    let server = TestServer::new().start().await.unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_automatic_405() {
+    #[handler]
+    async fn res_405() {}
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", res_405))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.post("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::METHOD_NOT_ALLOWED);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_automatic_415() {
+    #[handler]
+    async fn res_415(_: Json<()>) {}
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", res_415))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server
+        .get("/test", |req| req.body("plain text body"))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_automatic_500() {
+    #[handler]
+    async fn res_500(_: NextFn) {}
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", res_500))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+    let errors = server.stop().await;
+    assert_eq!(errors.len(), 1);
+    assert!(matches!(*errors[0], Error::NoNextFunction));
 }

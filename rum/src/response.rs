@@ -62,7 +62,7 @@ pub enum Response {
 
 impl Response {
     /// Creates a new success response value, with status code 200 and an empty
-    /// JSON object body.
+    /// body.
     pub fn new() -> Self {
         Self::default()
     }
@@ -187,6 +187,12 @@ pub trait IntoResponse {
 impl IntoResponse for Response {
     fn into_response(self) -> Response {
         self
+    }
+}
+
+impl IntoResponse for () {
+    fn into_response(self) -> Response {
+        Response::new()
     }
 }
 
