@@ -1,6 +1,6 @@
 //! Types involving HTTP responses.
 
-use crate::body::Json;
+use crate::body::{BodyString, Json};
 use crate::cookie::SetCookie;
 use crate::error::{Error, ErrorSource, Result};
 use crate::http::StatusCode;
@@ -39,13 +39,13 @@ impl ErrorBody {
 #[derive(Debug, Clone, Default)]
 pub struct ResponseInner {
     /// The response status code.
-    pub code: StatusCode,
+    pub code: Option<StatusCode>,
     /// The response body.
-    pub body: String,
+    pub body: Option<String>,
     /// The response headers.
-    pub headers: HashMap<String, Vec<String>>,
+    pub headers: Option<HashMap<String, Vec<String>>>,
     /// The cookies.
-    pub cookies: Vec<SetCookie>,
+    pub cookies: Option<Vec<SetCookie>>,
 }
 
 /// An HTTP response.
@@ -75,7 +75,7 @@ impl Response {
     /// Sets the response status code.
     pub fn status_code(mut self, code: StatusCode) -> Self {
         if let Self::Ok(inner) = &mut self {
-            inner.code = code;
+            inner.code = Some(code);
         }
 
         self
@@ -84,7 +84,7 @@ impl Response {
     /// Sets the response body string content.
     pub fn body(mut self, body: &str) -> Self {
         if let Self::Ok(inner) = &mut self {
-            body.clone_into(&mut inner.body);
+            inner.body = Some(body.to_owned());
         }
 
         self
@@ -93,8 +93,8 @@ impl Response {
     /// Sets the response body string content if the body is empty.
     pub fn body_or(mut self, body: &str) -> Self {
         if let Self::Ok(inner) = &mut self {
-            if inner.body.is_empty() {
-                body.clone_into(&mut inner.body);
+            if inner.body.as_ref().map(String::is_empty).unwrap_or(true) {
+                inner.body = Some(body.to_owned());
             }
         }
 
@@ -108,7 +108,7 @@ impl Response {
     {
         if let Self::Ok(inner) = &mut self {
             if let Ok(body) = serde_json::to_string(&body) {
-                inner.body = body;
+                inner.body = Some(body);
             }
         }
 
@@ -120,6 +120,7 @@ impl Response {
         if let Self::Ok(inner) = &mut self {
             inner
                 .headers
+                .get_or_insert_with(HashMap::new)
                 .entry(name.to_owned())
                 .or_default()
                 .push(value.to_owned());
@@ -131,7 +132,50 @@ impl Response {
     /// Sets a cookie value.
     pub fn cookie(mut self, cookie: SetCookie) -> Self {
         if let Self::Ok(inner) = &mut self {
-            inner.cookies.push(cookie);
+            inner.cookies.get_or_insert_with(Vec::new).push(cookie);
+        }
+
+        self
+    }
+
+    /// Combines multiple responses together. When both `self` and `other` have
+    /// response components specified, priority goes to `other`.
+    pub fn and<T>(mut self, other: T) -> Self
+    where
+        T: IntoResponse,
+    {
+        if let Self::Ok(self_inner) = &mut self {
+            if let Self::Ok(other_inner) = other.into_response() {
+                if let Some(other_code) = other_inner.code {
+                    self_inner.code = Some(other_code);
+                }
+
+                if let Some(other_body) = other_inner.body {
+                    self_inner.body = Some(other_body);
+                }
+
+                if let Some(other_headers) = other_inner.headers {
+                    other_headers.into_iter().for_each(|(name, values)| {
+                        let this_entry = self_inner
+                            .headers
+                            .get_or_insert_with(HashMap::new)
+                            .entry(name.to_owned())
+                            .or_default();
+
+                        values
+                            .into_iter()
+                            .for_each(|value| this_entry.push(value.to_owned()));
+                    });
+                }
+
+                if let Some(other_cookies) = other_inner.cookies {
+                    let cookies = self_inner.cookies.get_or_insert_with(Vec::new);
+
+                    other_cookies
+                        .into_iter()
+                        .for_each(|cookie| cookies.push(cookie));
+                }
+            }
         }
 
         self
@@ -148,7 +192,12 @@ impl Default for Response {
 impl Into<HyperResponse<String>> for Response {
     fn into(self) -> HyperResponse<String> {
         let (code, body, headers, cookies) = match self {
-            Self::Ok(inner) => (inner.code, inner.body, inner.headers, inner.cookies),
+            Self::Ok(inner) => (
+                inner.code.unwrap_or_default(),
+                inner.body.unwrap_or_default(),
+                inner.headers.unwrap_or_default(),
+                inner.cookies.unwrap_or_default(),
+            ),
             Self::Err(err) => (
                 err.response_status(),
                 ErrorBody::new(match err.source() {
@@ -206,17 +255,19 @@ impl IntoResponse for &str {
 
 impl IntoResponse for String {
     fn into_response(self) -> Response {
-        Response::new()
-            .body(self.as_str())
-            .header("Content-Type", "text/plain")
+        self.as_str().into_response()
     }
 }
 
 impl IntoResponse for &String {
     fn into_response(self) -> Response {
-        Response::new()
-            .body(self)
-            .header("Content-Type", "text/plain")
+        self.as_str().into_response()
+    }
+}
+
+impl IntoResponse for BodyString {
+    fn into_response(self) -> Response {
+        self.0.into_response()
     }
 }
 
@@ -231,12 +282,9 @@ where
     }
 }
 
-impl<T> IntoResponse for (StatusCode, T)
-where
-    T: IntoResponse,
-{
+impl IntoResponse for StatusCode {
     fn into_response(self) -> Response {
-        self.1.into_response().status_code(self.0)
+        Response::new().status_code(self)
     }
 }
 
@@ -251,3 +299,29 @@ where
         }
     }
 }
+
+/// Implements `IntoResponse` for as many tuples as specified.
+macro_rules! impl_into_response_tuples {
+    ( $_:ty ) => {};
+
+    ( $first:ident $( $rest:ident )+ ) => {
+        impl_into_response_tuples! { $( $rest )+ }
+
+        impl< $first, $( $rest ),+ > IntoResponse for ( $first, $( $rest, )+ )
+        where
+            $first: IntoResponse,
+            $( $rest: IntoResponse, )+
+        {
+            fn into_response(self) -> Response {
+                #[allow(non_snake_case)]
+                let ( $first, $( $rest ),+ ) = self;
+                $first.into_response()
+                $(
+                    .and( $rest )
+                )+
+            }
+        }
+    };
+}
+
+impl_into_response_tuples! { A B C D E F G H I J K L }

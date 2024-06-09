@@ -1,6 +1,7 @@
 use rum::error::Error;
 use rum::prelude::*;
 use serde::de::DeserializeOwned;
+use serde::Deserialize;
 use std::io;
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -300,4 +301,428 @@ async fn test_automatic_500() {
     let errors = server.stop().await;
     assert_eq!(errors.len(), 1);
     assert!(matches!(*errors[0], Error::NoNextFunction));
+}
+
+#[tokio::test]
+async fn test_string_error() {
+    async fn string_error(req: Request) -> Response {
+        let maybe_string = BodyString::from_request(&req);
+        assert!(matches!(maybe_string, Err(Error::StringError(_))));
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", string_error))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server
+        .get("/test", |req| {
+            req.header(hyper::header::CONTENT_TYPE, "text/plain")
+                .body(vec![0, 159, 146, 150])
+        })
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_json_error() {
+    async fn string_error(req: Request) -> Response {
+        #[derive(Debug, Deserialize)]
+        struct TestJson {
+            _missing_field: i32,
+        }
+
+        let maybe_json = Json::<TestJson>::from_request(&req);
+        assert!(matches!(maybe_json, Err(Error::JsonError(_))));
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", string_error))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server
+        .get("/test", |req| {
+            req.header(hyper::header::CONTENT_TYPE, "application/json")
+                .body("{}")
+        })
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_missing_path_param_error() {
+    async fn missing_path_param(req: Request) -> Response {
+        let path_params = PathParamMap::from_request(&req).unwrap();
+        let maybe_path_param = path_params.get("missing");
+        assert!(matches!(
+            maybe_path_param,
+            Err(Error::MissingPathParameterError(name)) if name.as_str() == "missing"
+        ));
+
+        let maybe_path_param = PathParam::<"missing">::from_request(&req);
+        assert!(matches!(
+            maybe_path_param,
+            Err(Error::MissingPathParameterError(name)) if name.as_str() == "missing"
+        ));
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", missing_path_param))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_missing_query_param_error() {
+    async fn missing_query_param(req: Request) -> Response {
+        let query_params = QueryParamMap::from_request(&req).unwrap();
+        let maybe_query_param = query_params.get("missing");
+        assert!(matches!(
+            maybe_query_param,
+            Err(Error::MissingQueryParameterError(name)) if name.as_str() == "missing"
+        ));
+
+        let maybe_query_param = QueryParam::<"missing">::from_request(&req);
+        assert!(matches!(
+            maybe_query_param,
+            Err(Error::MissingQueryParameterError(name)) if name.as_str() == "missing"
+        ));
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", missing_query_param))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_missing_header_error() {
+    async fn missing_header(req: Request) -> Response {
+        let headers = HeaderMap::from_request(&req).unwrap();
+        let maybe_header = headers.get("missing");
+        assert!(matches!(
+            maybe_header,
+            Err(Error::MissingHeaderError(name)) if name.as_str() == "missing"
+        ));
+
+        let maybe_header = Header::<"missing">::from_request(&req);
+        assert!(matches!(
+            maybe_header,
+            Err(Error::MissingHeaderError(name)) if name.as_str() == "missing"
+        ));
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", missing_header))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_missing_cookie_error() {
+    async fn missing_cookie(req: Request) -> Response {
+        let cookies = CookieMap::from_request(&req).unwrap();
+        let maybe_cookie = cookies.get("missing");
+        assert!(matches!(
+            maybe_cookie,
+            Err(Error::MissingCookieError(name)) if name.as_str() == "missing"
+        ));
+
+        let maybe_cookie = Cookie::<"missing">::from_request(&req);
+        assert!(matches!(
+            maybe_cookie,
+            Err(Error::MissingCookieError(name)) if name.as_str() == "missing"
+        ));
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", missing_cookie))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_path_param_parse_error() {
+    async fn path_param_parse_error(req: Request) -> Response {
+        let path_params = PathParamMap::from_request(&req).unwrap();
+        let maybe_path_param = path_params.get_as::<i32>("parse_error");
+        assert!(matches!(
+            maybe_path_param,
+            Err(Error::PathParameterParseError(name, _)) if name.as_str() == "parse_error"
+        ));
+
+        let maybe_path_param = PathParam::<"parse_error", i32>::from_request(&req);
+        assert!(matches!(
+            maybe_path_param,
+            Err(Error::PathParameterParseError(name, _)) if name.as_str() == "parse_error"
+        ));
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test/{parse_error}", path_param_parse_error))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test/foo", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_query_param_parse_error() {
+    async fn query_param_parse_error(req: Request) -> Response {
+        let query_params = QueryParamMap::from_request(&req).unwrap();
+        let maybe_query_param = query_params.get_as::<i32>("parse_error");
+        assert!(matches!(
+            maybe_query_param,
+            Err(Error::QueryParameterParseError(name, _)) if name.as_str() == "parse_error"
+        ));
+
+        let maybe_query_param = QueryParam::<"parse_error", i32>::from_request(&req);
+        assert!(matches!(
+            maybe_query_param,
+            Err(Error::QueryParameterParseError(name, _)) if name.as_str() == "parse_error"
+        ));
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", query_param_parse_error))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server
+        .get("/test?parse_error=foo", |req| req)
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_header_parse_error() {
+    async fn header_parse_error(req: Request) -> Response {
+        let headers = HeaderMap::from_request(&req).unwrap();
+        let maybe_header = headers.get_as::<i32>("parse_error");
+        assert!(matches!(
+            maybe_header,
+            Err(Error::HeaderParseError(name, _)) if name.as_str() == "parse_error"
+        ));
+
+        let maybe_header = Header::<"parse_error", i32>::from_request(&req);
+        assert!(matches!(
+            maybe_header,
+            Err(Error::HeaderParseError(name, _)) if name.as_str() == "parse_error"
+        ));
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", header_parse_error))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server
+        .get("/test", |req| req.header("parse_error", "foo"))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_cookie_parse_error() {
+    async fn cookie_parse_error(req: Request) -> Response {
+        let cookies = CookieMap::from_request(&req).unwrap();
+        let maybe_cookie = cookies.get_as::<i32>("parse_error");
+        assert!(matches!(
+            maybe_cookie,
+            Err(Error::CookieParseError(name, _)) if name.as_str() == "parse_error"
+        ));
+
+        let maybe_cookie = Cookie::<"parse_error", i32>::from_request(&req);
+        assert!(matches!(
+            maybe_cookie,
+            Err(Error::CookieParseError(name, _)) if name.as_str() == "parse_error"
+        ));
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", cookie_parse_error))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server
+        .get("/test", |req| {
+            req.header(hyper::header::COOKIE, "parse_error=foo")
+        })
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_unknown_state_type_error() {
+    async fn unknown_state_type_error(req: Request) -> Response {
+        let maybe_state = State::<i32>::from_request(&req);
+        assert!(matches!(
+            maybe_state,
+            Err(Error::UnknownStateTypeError("i32"))
+        ));
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", unknown_state_type_error))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_no_next_function() {
+    async fn no_next_function(req: Request) -> Response {
+        let maybe_next_function = NextFn::from_request(&req);
+        assert!(matches!(maybe_next_function, Err(Error::NoNextFunction)));
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", no_next_function))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_unsupported_media_type() {
+    async fn unsupported_media_type_text(req: Request) -> Response {
+        let maybe_text = BodyString::from_request(&req);
+        assert!(matches!(maybe_text, Err(Error::UnsupportedMediaType)));
+
+        Response::new()
+    }
+
+    async fn unsupported_media_type_json(req: Request) -> Response {
+        #[derive(Deserialize)]
+        struct TestJson;
+
+        let maybe_json = Json::<TestJson>::from_request(&req);
+        assert!(matches!(maybe_json, Err(Error::UnsupportedMediaType)));
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| {
+            server
+                .get("/test/text", unsupported_media_type_text)
+                .get("/test/json", unsupported_media_type_json)
+        })
+        .start()
+        .await
+        .unwrap();
+
+    let res = server
+        .get("/test/text", |req| {
+            req.header(hyper::header::CONTENT_TYPE, "application/json")
+        })
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let res = server
+        .get("/test/json", |req| {
+            req.header(hyper::header::CONTENT_TYPE, "text/plain")
+        })
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
 }
