@@ -38,6 +38,8 @@ pub struct RequestInner {
     method: Method,
     /// The request path.
     path: RoutePath,
+    /// The matched path parameters.
+    matched_path: RoutePathMatched,
     /// The map of path parameters.
     path_params: PathParamMap,
     /// The map of query parameters.
@@ -65,6 +67,7 @@ impl RequestInner {
             body: Arc::from(body.collect().await?.to_bytes().to_vec()),
             method: Method::from(&head.method),
             path: RoutePath::from(head.uri.path()),
+            matched_path: matched_path.clone(),
             path_params: PathParamMap(Arc::new(
                 matched_path
                     .iter()
@@ -128,6 +131,11 @@ impl RequestInner {
     /// Gets the request path.
     pub fn path(&self) -> RoutePath {
         self.path.clone()
+    }
+
+    /// Gets the matched request path.
+    pub fn matched_path(&self) -> RoutePathMatched {
+        self.matched_path.clone()
     }
 
     /// Gets a path parameter value.
@@ -260,6 +268,11 @@ impl Request {
             inner: Arc::new(RequestInner::new(req, matched_path, state).await?),
             next: None,
         })
+    }
+
+    /// Gets the next middleware function.
+    pub fn next_fn(&self) -> Option<NextFn> {
+        self.next.clone()
     }
 
     /// Extracts a part of the request using [`FromRequest`].

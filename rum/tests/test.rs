@@ -1,7 +1,8 @@
 use rum::error::Error;
 use rum::prelude::*;
+use rum::routing::{RoutePathMatchedSegment, RoutePathSegment};
 use serde::de::DeserializeOwned;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::io;
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -718,6 +719,164 @@ async fn test_unsupported_media_type() {
     let res = server
         .get("/test/json", |req| {
             req.header(hyper::header::CONTENT_TYPE, "text/plain")
+        })
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_request_methods() {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    struct TestJson {
+        num: i32,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    struct TestState {
+        num: i32,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    struct TestLocalState {
+        num: i32,
+    }
+
+    #[middleware]
+    async fn request_methods_middleware(
+        req: Request,
+        local_state: LocalState,
+        next: NextFn,
+    ) -> Response {
+        local_state
+            .with(|state| state.insert(TestLocalState { num: 789 }))
+            .await;
+        next.call(req).await
+    }
+
+    async fn request_methods(req: Request) -> Response {
+        let body_str = std::str::from_utf8(req.body()).unwrap();
+        assert_eq!(body_str, "{\"num\":123}");
+
+        let body_json = req.body_json::<TestJson>().unwrap();
+        assert_eq!(body_json, TestJson { num: 123 });
+
+        let method = req.method();
+        assert_eq!(*method, Method::GET);
+
+        let path = &*req.path();
+        assert_eq!(
+            path,
+            &[
+                RoutePathSegment::Static("test".to_owned()),
+                RoutePathSegment::Static("234".to_owned())
+            ]
+        );
+
+        let matched_path = &*req.matched_path();
+        assert_eq!(
+            matched_path,
+            &[
+                RoutePathMatchedSegment::Static("test".to_owned()),
+                RoutePathMatchedSegment::Wildcard("num".to_owned(), "234".to_owned())
+            ]
+        );
+
+        let path_param = req.path_param("num").unwrap();
+        assert_eq!(path_param, "234");
+
+        let invalid_path_param = req.path_param("invalid");
+        assert!(invalid_path_param.is_err());
+
+        let path_param_as = req.path_param_as::<i32>("num").unwrap();
+        assert_eq!(path_param_as, 234);
+
+        let query_param = req.query_param("num").unwrap();
+        assert_eq!(query_param, "345");
+
+        let invalid_query_param = req.query_param("invalid");
+        assert!(invalid_query_param.is_err());
+
+        let query_param_as = req.query_param_as::<i32>("num").unwrap();
+        assert_eq!(query_param_as, 345);
+
+        let query_param_optional = req.query_param_optional("num").unwrap();
+        assert_eq!(query_param_optional, "345");
+
+        let invalid_query_param_optional = req.query_param_optional("invalid");
+        assert!(invalid_query_param_optional.is_none());
+
+        let query_param_optional_as = req.query_param_optional_as::<i32>("num").unwrap().unwrap();
+        assert_eq!(query_param_optional_as, 345);
+
+        let header = req.header("num").unwrap();
+        assert_eq!(header, &["456"]);
+
+        let invalid_header = req.header("invalid");
+        assert!(invalid_header.is_err());
+
+        let header_as = req.header_as::<i32>("num").unwrap();
+        assert_eq!(header_as, &[456]);
+
+        let header_optional = req.header_optional("num").unwrap();
+        assert_eq!(header_optional, &["456"]);
+
+        let invalid_header_optional = req.header_optional("invalid");
+        assert!(invalid_header_optional.is_none());
+
+        let header_optional_as = req.header_optional_as::<i32>("num").unwrap().unwrap();
+        assert_eq!(header_optional_as, &[456]);
+
+        let cookie = req.cookie("num").unwrap();
+        assert_eq!(cookie, "567");
+
+        let invalid_cookie = req.cookie("invalid");
+        assert!(invalid_cookie.is_err());
+
+        let cookie_as = req.cookie_as::<i32>("num").unwrap();
+        assert_eq!(cookie_as, 567);
+
+        let cookie_optional = req.cookie_optional("num").unwrap();
+        assert_eq!(cookie_optional, "567");
+
+        let invalid_cookie_optional = req.cookie_optional("invalid");
+        assert!(invalid_cookie_optional.is_none());
+
+        let cookie_optional_as = req.cookie_optional_as::<i32>("num").unwrap().unwrap();
+        assert_eq!(cookie_optional_as, 567);
+
+        let state_value = req.state_value::<TestState>().unwrap();
+        assert_eq!(state_value, TestState { num: 678 });
+
+        let local_state = req.local_state();
+        let local_state_value = local_state
+            .with(|state| state.get_copied::<TestLocalState>())
+            .await
+            .unwrap();
+        assert_eq!(local_state_value, TestLocalState { num: 789 });
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| {
+            server
+                .with_middleware(request_methods_middleware)
+                .get("/test/{num}", request_methods)
+                .with_state(TestState { num: 678 })
+        })
+        .start()
+        .await
+        .unwrap();
+
+    let res = server
+        .get("/test/234?num=345", |req| {
+            req.body("{\"num\":123}")
+                .header("num", "456")
+                .header(hyper::header::COOKIE, "num=567")
         })
         .await
         .unwrap();

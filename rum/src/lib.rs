@@ -54,6 +54,6 @@ pub mod prelude {
         error_report_stream, shutdown_signal, ErrorReceiver, ErrorSender, Server, ShutdownReceiver,
         ShutdownSender,
     };
-    pub use crate::state::State;
+    pub use crate::state::{LocalState, State};
     pub use rum_macros::{handler, middleware};
 }

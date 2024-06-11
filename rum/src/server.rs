@@ -2,7 +2,7 @@
 
 use crate::error::Error;
 use crate::http::Method;
-use crate::middleware::{Middleware, MiddlewareCollection};
+use crate::middleware::Middleware;
 use crate::request::Request;
 use crate::response::{ErrorBody, Response};
 use crate::routing::{RouteGroup, RouteHandler, RouteLevel, RoutePath};
@@ -153,8 +153,6 @@ impl Service<HyperRequest<Incoming>> for ServerService {
 pub struct Server {
     /// The collection of all registered routes.
     routes: RouteGroup,
-    /// The collection of all registered middleware.
-    middleware: MiddlewareCollection,
     /// The global application state management system type map.
     state: TypeMap,
     /// The optional shutdown signal receiver.
@@ -272,7 +270,7 @@ impl Server {
     where
         M: Into<Middleware>,
     {
-        self.middleware.add_recursive(middleware.into());
+        self.routes.middleware.add_recursive(middleware.into());
         self
     }
 
@@ -282,7 +280,7 @@ impl Server {
     where
         M: Into<Middleware>,
     {
-        self.middleware.add_local(middleware.into());
+        self.routes.middleware.add_local(middleware.into());
         self
     }
 
