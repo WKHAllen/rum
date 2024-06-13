@@ -219,6 +219,26 @@ where
     }
 }
 
+#[cfg(feature = "nightly")]
+impl<const Q: &'static str, T> Borrow<T> for Cookie<Q, T>
+where
+    T: ParseCookie,
+{
+    fn borrow(&self) -> &T {
+        &self.0
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<const Q: &'static str, T> BorrowMut<T> for Cookie<Q, T>
+where
+    T: ParseCookie,
+{
+    fn borrow_mut(&mut self) -> &mut T {
+        &mut self.0
+    }
+}
+
 /// A single optional cookie.
 #[cfg(feature = "nightly")]
 pub struct CookieOptional<const C: &'static str, T = String>(pub(crate) Option<T>)
@@ -254,6 +274,26 @@ where
     T: ParseCookie,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<const Q: &'static str, T> Borrow<Option<T>> for CookieOptional<Q, T>
+where
+    T: ParseCookie,
+{
+    fn borrow(&self) -> &Option<T> {
+        &self.0
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<const Q: &'static str, T> BorrowMut<Option<T>> for CookieOptional<Q, T>
+where
+    T: ParseCookie,
+{
+    fn borrow_mut(&mut self) -> &mut Option<T> {
         &mut self.0
     }
 }

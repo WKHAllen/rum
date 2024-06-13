@@ -885,3 +885,1195 @@ async fn test_request_methods() {
     let errors = server.stop().await;
     assert_no_server_errors!(errors);
 }
+
+#[tokio::test]
+async fn test_extract_request() {
+    async fn extract_request(req: Request) -> Response {
+        let req = Request::from_request(&req).unwrap();
+        let body_str = req.body_str().unwrap();
+        assert_eq!(body_str, "Hello, request!");
+
+        let maybe_next_fn = req.next_fn();
+        assert!(maybe_next_fn.is_none());
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", extract_request))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server
+        .get("/test", |req| req.body("Hello, request!"))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_extract_body_raw() {
+    async fn extract_body_raw(req: Request) -> Response {
+        let body_raw = BodyRaw::from_request(&req).unwrap();
+        assert_eq!(&*body_raw, &[0, 159, 146, 150]);
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", extract_body_raw))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server
+        .get("/test", |req| req.body(vec![0, 159, 146, 150]))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_extract_body_string() {
+    async fn extract_body_string(req: Request) -> Response {
+        let body_str = BodyString::from_request(&req).unwrap();
+        assert_eq!(*body_str, "Hello, body string!");
+        assert_eq!(body_str.into_inner(), "Hello, body string!");
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", extract_body_string))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server
+        .get("/test", |req| {
+            req.body("Hello, body string!")
+                .header(hyper::header::CONTENT_TYPE, "text/plain")
+        })
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_extract_json() {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    struct TestJson {
+        num: i32,
+    }
+
+    async fn extract_json(req: Request) -> Response {
+        let body_json = Json::<TestJson>::from_request(&req).unwrap();
+        assert_eq!(*body_json, TestJson { num: 123 });
+        assert_eq!(body_json.into_inner(), TestJson { num: 123 });
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", extract_json))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server
+        .get("/test", |req| {
+            req.body("{\"num\":123}")
+                .header(hyper::header::CONTENT_TYPE, "application/json")
+        })
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_extract_method() {
+    async fn extract_method(req: Request) -> Response {
+        let method = Method::from_request(&req).unwrap();
+        assert_eq!(method, Method::GET);
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", extract_method))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_extract_route_path() {
+    async fn extract_route_path(req: Request) -> Response {
+        let route_path = RoutePath::from_request(&req).unwrap();
+        assert_eq!(
+            &*route_path,
+            &[
+                RoutePathSegment::Static("test".to_owned()),
+                RoutePathSegment::Static("123".to_owned())
+            ]
+        );
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test/{num}", extract_route_path))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test/123", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_extract_route_path_matched() {
+    async fn extract_route_path_matched(req: Request) -> Response {
+        let route_path_matched = RoutePathMatched::from_request(&req).unwrap();
+        assert_eq!(
+            &*route_path_matched,
+            &[
+                RoutePathMatchedSegment::Static("test".to_owned()),
+                RoutePathMatchedSegment::Wildcard("num".to_owned(), "123".to_owned())
+            ]
+        );
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test/{num}", extract_route_path_matched))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test/123", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_extract_path_param_map() {
+    async fn extract_path_param_map(req: Request) -> Response {
+        let path_param_map = PathParamMap::from_request(&req).unwrap();
+        assert_eq!(path_param_map.get("num").unwrap(), "123");
+        assert_eq!(path_param_map.get_as::<i32>("num").unwrap(), 123);
+        assert!(path_param_map.get("invalid").is_err());
+        assert!(path_param_map.get_as::<i32>("invalid").is_err());
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test/{num}", extract_path_param_map))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test/123", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_extract_path_params() {
+    #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+    struct TestPathParams {
+        message: String,
+    }
+
+    async fn extract_path_params(req: Request) -> Response {
+        let path_params = PathParams::<TestPathParams>::from_request(&req).unwrap();
+        assert_eq!(
+            *path_params,
+            TestPathParams {
+                message: "hello_path_params".to_owned()
+            }
+        );
+        assert_eq!(
+            path_params.into_inner(),
+            TestPathParams {
+                message: "hello_path_params".to_owned()
+            }
+        );
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test/{message}", extract_path_params))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server
+        .get("/test/hello_path_params", |req| req)
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_extract_path_param() {
+    async fn extract_path_param(req: Request) -> Response {
+        let path_param = PathParam::<"num", i32>::from_request(&req).unwrap();
+        assert_eq!(*path_param, 123);
+        assert_eq!(path_param.into_inner(), 123);
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test/{num}", extract_path_param))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test/123", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_extract_query_param_map() {
+    async fn extract_query_param_map(req: Request) -> Response {
+        let query_param_map = QueryParamMap::from_request(&req).unwrap();
+        assert_eq!(query_param_map.get("num").unwrap(), "123");
+        assert_eq!(query_param_map.get_as::<i32>("num").unwrap(), 123);
+        assert_eq!(query_param_map.get_optional("num"), Some("123"));
+        assert_eq!(
+            query_param_map.get_optional_as::<i32>("num").unwrap(),
+            Some(123)
+        );
+        assert!(query_param_map.get_optional_as::<bool>("num").is_err());
+        assert_eq!(query_param_map.get_optional("invalid"), None);
+        assert_eq!(
+            query_param_map.get_optional_as::<i32>("invalid").unwrap(),
+            None
+        );
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", extract_query_param_map))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test?num=123", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_extract_query_params() {
+    #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+    struct TestQueryParams {
+        message: String,
+    }
+
+    async fn extract_query_params(req: Request) -> Response {
+        let query_params = QueryParams::<TestQueryParams>::from_request(&req).unwrap();
+        assert_eq!(
+            *query_params,
+            TestQueryParams {
+                message: "hello_query_params".to_owned()
+            }
+        );
+        assert_eq!(
+            query_params.into_inner(),
+            TestQueryParams {
+                message: "hello_query_params".to_owned()
+            }
+        );
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", extract_query_params))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server
+        .get("/test?message=hello_query_params", |req| req)
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_extract_query_param() {
+    async fn extract_query_param(req: Request) -> Response {
+        let query_param = QueryParam::<"num", i32>::from_request(&req).unwrap();
+        assert_eq!(*query_param, 123);
+        assert_eq!(query_param.into_inner(), 123);
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", extract_query_param))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test?num=123", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_extract_query_param_optional() {
+    async fn extract_query_param(req: Request) -> Response {
+        let query_param = QueryParamOptional::<"num", i32>::from_request(&req).unwrap();
+        assert_eq!(*query_param, Some(123));
+        assert_eq!(query_param.into_inner(), Some(123));
+
+        let query_param_invalid = QueryParamOptional::<"invalid", i32>::from_request(&req).unwrap();
+        assert_eq!(*query_param_invalid, None);
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", extract_query_param))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test?num=123", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_extract_header_map() {
+    async fn extract_header_map(req: Request) -> Response {
+        let header_map = HeaderMap::from_request(&req).unwrap();
+        assert_eq!(header_map.get("num").unwrap(), &["123"]);
+        assert_eq!(header_map.get_as::<i32>("num").unwrap(), vec![123]);
+        assert_eq!(header_map.get_optional("num").unwrap(), &["123".to_owned()]);
+        assert_eq!(
+            header_map.get_optional_as::<i32>("num").unwrap(),
+            Some(vec![123])
+        );
+        assert!(header_map.get_optional_as::<bool>("num").is_err());
+        assert_eq!(header_map.get_optional("invalid"), None);
+        assert_eq!(header_map.get_optional_as::<i32>("invalid").unwrap(), None);
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", extract_header_map))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server
+        .get("/test", |req| req.header("num", "123"))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_extract_headers() {
+    #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+    struct TestHeaders {
+        message: Vec<String>,
+    }
+
+    async fn extract_headers(req: Request) -> Response {
+        let headers = Headers::<TestHeaders>::from_request(&req).unwrap();
+        assert_eq!(
+            *headers,
+            TestHeaders {
+                message: vec!["hello_headers".to_owned()]
+            }
+        );
+        assert_eq!(
+            headers.into_inner(),
+            TestHeaders {
+                message: vec!["hello_headers".to_owned()]
+            }
+        );
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", extract_headers))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server
+        .get("/test", |req| req.header("message", "hello_headers"))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_extract_header() {
+    async fn extract_header(req: Request) -> Response {
+        let header = Header::<"num", i32>::from_request(&req).unwrap();
+        assert_eq!(*header, &[123]);
+        assert_eq!(header.into_inner(), &[123]);
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", extract_header))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server
+        .get("/test", |req| req.header("num", "123"))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_extract_header_optional() {
+    async fn extract_header(req: Request) -> Response {
+        let header = HeaderOptional::<"num", i32>::from_request(&req).unwrap();
+        assert_eq!(*header, Some(vec![123]));
+        assert_eq!(header.into_inner(), Some(vec![123]));
+
+        let header_invalid = HeaderOptional::<"invalid", i32>::from_request(&req).unwrap();
+        assert_eq!(*header_invalid, None);
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", extract_header))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server
+        .get("/test", |req| req.header("num", "123"))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_extract_cookie_map() {
+    async fn extract_cookie_map(req: Request) -> Response {
+        let cookie_map = CookieMap::from_request(&req).unwrap();
+        assert_eq!(cookie_map.get("num").unwrap(), "123");
+        assert_eq!(cookie_map.get_as::<i32>("num").unwrap(), 123);
+        assert_eq!(cookie_map.get_optional("num"), Some("123"));
+        assert_eq!(cookie_map.get_optional_as::<i32>("num").unwrap(), Some(123));
+        assert!(cookie_map.get_optional_as::<bool>("num").is_err());
+        assert_eq!(cookie_map.get_optional("invalid"), None);
+        assert_eq!(cookie_map.get_optional_as::<i32>("invalid").unwrap(), None);
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", extract_cookie_map))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server
+        .get("/test", |req| req.header(hyper::header::COOKIE, "num=123"))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_extract_cookies() {
+    #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+    struct TestCookies {
+        message: String,
+    }
+
+    async fn extract_cookies(req: Request) -> Response {
+        let cookies = Cookies::<TestCookies>::from_request(&req).unwrap();
+        assert_eq!(
+            *cookies,
+            TestCookies {
+                message: "hello_cookies".to_owned()
+            }
+        );
+        assert_eq!(
+            cookies.into_inner(),
+            TestCookies {
+                message: "hello_cookies".to_owned()
+            }
+        );
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", extract_cookies))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server
+        .get("/test", |req| {
+            req.header(hyper::header::COOKIE, "message=hello_cookies")
+        })
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_extract_cookie() {
+    async fn extract_cookie(req: Request) -> Response {
+        let cookie = Cookie::<"num", i32>::from_request(&req).unwrap();
+        assert_eq!(*cookie, 123);
+        assert_eq!(cookie.into_inner(), 123);
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", extract_cookie))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server
+        .get("/test", |req| req.header(hyper::header::COOKIE, "num=123"))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_extract_cookie_optional() {
+    async fn extract_cookie(req: Request) -> Response {
+        let cookie = CookieOptional::<"num", i32>::from_request(&req).unwrap();
+        assert_eq!(*cookie, Some(123));
+        assert_eq!(cookie.into_inner(), Some(123));
+
+        let cookie_invalid = CookieOptional::<"invalid", i32>::from_request(&req).unwrap();
+        assert_eq!(*cookie_invalid, None);
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", extract_cookie))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server
+        .get("/test", |req| req.header(hyper::header::COOKIE, "num=123"))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_extract_state() {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    struct TestState {
+        num: i32,
+    }
+
+    async fn extract_state(req: Request) -> Response {
+        let state = State::<TestState>::from_request(&req).unwrap();
+        assert_eq!(*state, TestState { num: 123 });
+        assert_eq!(state.into_inner(), TestState { num: 123 });
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| {
+            server
+                .get("/test", extract_state)
+                .with_state(TestState { num: 123 })
+        })
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_extract_local_state() {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    struct TestLocalState {
+        num: i32,
+    }
+
+    #[middleware]
+    async fn extract_local_state_middleware(
+        req: Request,
+        local_state: LocalState,
+        next: NextFn,
+    ) -> Response {
+        local_state
+            .with(|state| state.insert(TestLocalState { num: 123 }))
+            .await;
+        next.call(req).await
+    }
+
+    async fn extract_local_state(req: Request) -> Response {
+        let local_state = LocalState::from_request(&req).unwrap();
+        let local_state_value = local_state
+            .with(|state| state.get_copied::<TestLocalState>())
+            .await
+            .unwrap();
+        assert_eq!(local_state_value, TestLocalState { num: 123 });
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| {
+            server
+                .with_middleware(extract_local_state_middleware)
+                .get("/test", extract_local_state)
+        })
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_extract_next_fn() {
+    async fn extract_next_fn_middleware(req: Request) -> Response {
+        let next = NextFn::from_request(&req).unwrap();
+        next.call(req).await
+    }
+
+    async fn extract_next_fn(req: Request) -> Response {
+        let maybe_next = NextFn::from_request(&req);
+        assert!(matches!(maybe_next, Err(Error::NoNextFunction)));
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| {
+            server
+                .with_middleware(extract_next_fn_middleware)
+                .get("/test", extract_next_fn)
+        })
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_route_path() {
+    assert_eq!(RoutePath::new().to_string(), "/");
+    assert_eq!(RoutePath::from("").to_string(), "/");
+    assert_eq!(RoutePath::from("/").to_string(), "/");
+    assert_eq!(RoutePath::from("test").to_string(), "/test");
+    assert_eq!(RoutePath::from("/test").to_string(), "/test");
+    assert_eq!(RoutePath::from("/test/").to_string(), "/test");
+    assert_eq!(RoutePath::from("test/123").to_string(), "/test/123");
+    assert_eq!(RoutePath::from("/test/123").to_string(), "/test/123");
+    assert_eq!(RoutePath::from("/test/123/").to_string(), "/test/123");
+
+    assert_eq!(
+        RoutePath::from("/test").join("/123").to_string(),
+        "/test/123"
+    );
+    assert_eq!(
+        RoutePath::from("foo").join("bar").join("baz").to_string(),
+        "/foo/bar/baz"
+    );
+
+    assert_eq!(
+        RoutePath::from_iter(RoutePath::from("/foo/bar/baz").iter()),
+        RoutePath::from("/foo/bar/baz")
+    );
+
+    assert_eq!(RoutePath::new().num_segments(), 0);
+    assert_eq!(RoutePath::from("").num_segments(), 0);
+    assert_eq!(RoutePath::from("/").num_segments(), 0);
+    assert_eq!(RoutePath::from("test").num_segments(), 1);
+    assert_eq!(RoutePath::from("/test").num_segments(), 1);
+    assert_eq!(RoutePath::from("/test/").num_segments(), 1);
+    assert_eq!(RoutePath::from("test/123").num_segments(), 2);
+    assert_eq!(RoutePath::from("/test/123").num_segments(), 2);
+    assert_eq!(RoutePath::from("/test/123/").num_segments(), 2);
+
+    assert_eq!(RoutePath::new().segments(), &[]);
+    assert_eq!(RoutePath::from("").segments(), &[]);
+    assert_eq!(RoutePath::from("/").segments(), &[]);
+    assert_eq!(
+        RoutePath::from("test").segments(),
+        &[RoutePathSegment::Static("test".to_owned())]
+    );
+    assert_eq!(
+        RoutePath::from("/test").segments(),
+        &[RoutePathSegment::Static("test".to_owned())]
+    );
+    assert_eq!(
+        RoutePath::from("/test/").segments(),
+        &[RoutePathSegment::Static("test".to_owned())]
+    );
+    assert_eq!(
+        RoutePath::from("test/123").segments(),
+        &[
+            RoutePathSegment::Static("test".to_owned()),
+            RoutePathSegment::Static("123".to_owned())
+        ]
+    );
+    assert_eq!(
+        RoutePath::from("/test/123").segments(),
+        &[
+            RoutePathSegment::Static("test".to_owned()),
+            RoutePathSegment::Static("123".to_owned())
+        ]
+    );
+    assert_eq!(
+        RoutePath::from("/test/123/").segments(),
+        &[
+            RoutePathSegment::Static("test".to_owned()),
+            RoutePathSegment::Static("123".to_owned())
+        ]
+    );
+
+    assert_eq!(
+        RoutePath::from("/foo/bar/baz").with_segments(..),
+        &[
+            RoutePathSegment::Static("foo".to_owned()),
+            RoutePathSegment::Static("bar".to_owned()),
+            RoutePathSegment::Static("baz".to_owned())
+        ]
+    );
+    assert_eq!(
+        RoutePath::from("/foo/bar/baz").with_segments(1..),
+        &[
+            RoutePathSegment::Static("bar".to_owned()),
+            RoutePathSegment::Static("baz".to_owned())
+        ]
+    );
+    assert_eq!(
+        RoutePath::from("/foo/bar/baz").with_segments(..2),
+        &[
+            RoutePathSegment::Static("foo".to_owned()),
+            RoutePathSegment::Static("bar".to_owned())
+        ]
+    );
+    assert_eq!(
+        RoutePath::from("/foo/bar/baz").with_segments(..=2),
+        &[
+            RoutePathSegment::Static("foo".to_owned()),
+            RoutePathSegment::Static("bar".to_owned()),
+            RoutePathSegment::Static("baz".to_owned())
+        ]
+    );
+    assert_eq!(
+        RoutePath::from("/foo/bar/baz").with_segments(1..2),
+        &[RoutePathSegment::Static("bar".to_owned())]
+    );
+    assert_eq!(
+        RoutePath::from("/foo/bar/baz").with_segments(1..=2),
+        &[
+            RoutePathSegment::Static("bar".to_owned()),
+            RoutePathSegment::Static("baz".to_owned())
+        ]
+    );
+
+    assert_eq!(
+        RoutePath::from("/foo/bar/baz").of_segments(..),
+        RoutePath::from("/foo/bar/baz")
+    );
+    assert_eq!(
+        RoutePath::from("/foo/bar/baz").of_segments(1..),
+        RoutePath::from("/bar/baz")
+    );
+    assert_eq!(
+        RoutePath::from("/foo/bar/baz").of_segments(..2),
+        RoutePath::from("/foo/bar")
+    );
+    assert_eq!(
+        RoutePath::from("/foo/bar/baz").of_segments(..=2),
+        RoutePath::from("/foo/bar/baz")
+    );
+    assert_eq!(
+        RoutePath::from("/foo/bar/baz").of_segments(1..2),
+        RoutePath::from("/bar")
+    );
+    assert_eq!(
+        RoutePath::from("/foo/bar/baz").of_segments(1..=2),
+        RoutePath::from("/bar/baz")
+    );
+
+    assert_eq!(RoutePath::from("/").split_first(), None);
+    assert_eq!(
+        RoutePath::from("/foo").split_first(),
+        Some((
+            RoutePathSegment::Static("foo".to_owned()),
+            RoutePath::from("/")
+        ))
+    );
+    assert_eq!(
+        RoutePath::from("/foo/bar").split_first(),
+        Some((
+            RoutePathSegment::Static("foo".to_owned()),
+            RoutePath::from("/bar")
+        ))
+    );
+    assert_eq!(
+        RoutePath::from("/foo/bar/baz").split_first(),
+        Some((
+            RoutePathSegment::Static("foo".to_owned()),
+            RoutePath::from("/bar/baz")
+        ))
+    );
+}
+
+#[tokio::test]
+async fn test_route_path_matched() {
+    assert_eq!(
+        RoutePathMatched::from(RoutePathMatchedSegment::Static("test".to_owned())).join(
+            RoutePathMatchedSegment::Wildcard("num".to_owned(), "/123".to_owned())
+        ),
+        RoutePathMatched::from([
+            RoutePathMatchedSegment::Static("test".to_owned()),
+            RoutePathMatchedSegment::Wildcard("num".to_owned(), "/123".to_owned())
+        ])
+    );
+    assert_eq!(
+        RoutePathMatched::from(RoutePathMatchedSegment::Static("foo".to_owned()))
+            .join(RoutePathMatchedSegment::Static("bar".to_owned()))
+            .join(RoutePathMatchedSegment::Static("baz".to_owned())),
+        RoutePathMatched::from([
+            RoutePathMatchedSegment::Static("foo".to_owned()),
+            RoutePathMatchedSegment::Static("bar".to_owned()),
+            RoutePathMatchedSegment::Static("baz".to_owned()),
+        ])
+    );
+
+    assert_eq!(
+        RoutePathMatched::from_iter(
+            RoutePathMatched::from([
+                RoutePathMatchedSegment::Static("foo".to_owned()),
+                RoutePathMatchedSegment::Static("bar".to_owned()),
+                RoutePathMatchedSegment::Static("baz".to_owned()),
+            ])
+            .iter()
+        ),
+        RoutePathMatched::from([
+            RoutePathMatchedSegment::Static("foo".to_owned()),
+            RoutePathMatchedSegment::Static("bar".to_owned()),
+            RoutePathMatchedSegment::Static("baz".to_owned()),
+        ])
+    );
+
+    assert_eq!(RoutePathMatched::new().num_segments(), 0);
+    assert_eq!(RoutePathMatched::from([]).num_segments(), 0);
+    assert_eq!(
+        RoutePathMatched::from([RoutePathMatchedSegment::Static("test".to_owned())]).num_segments(),
+        1
+    );
+    assert_eq!(
+        RoutePathMatched::from([
+            RoutePathMatchedSegment::Static("test".to_owned()),
+            RoutePathMatchedSegment::Wildcard("num".to_owned(), "123".to_owned())
+        ])
+        .num_segments(),
+        2
+    );
+
+    assert_eq!(RoutePathMatched::new().segments(), &[]);
+    assert_eq!(RoutePathMatched::from([]).segments(), &[]);
+    assert_eq!(
+        RoutePathMatched::from([RoutePathMatchedSegment::Static("test".to_owned())]).segments(),
+        &[RoutePathMatchedSegment::Static("test".to_owned())]
+    );
+    assert_eq!(
+        RoutePathMatched::from([
+            RoutePathMatchedSegment::Static("test".to_owned()),
+            RoutePathMatchedSegment::Wildcard("num".to_owned(), "123".to_owned())
+        ])
+        .segments(),
+        &[
+            RoutePathMatchedSegment::Static("test".to_owned()),
+            RoutePathMatchedSegment::Wildcard("num".to_owned(), "123".to_owned())
+        ]
+    );
+
+    assert_eq!(
+        RoutePathMatched::from([
+            RoutePathMatchedSegment::Static("foo".to_owned()),
+            RoutePathMatchedSegment::Static("bar".to_owned()),
+            RoutePathMatchedSegment::Static("baz".to_owned()),
+        ])
+        .with_segments(..),
+        &[
+            RoutePathMatchedSegment::Static("foo".to_owned()),
+            RoutePathMatchedSegment::Static("bar".to_owned()),
+            RoutePathMatchedSegment::Static("baz".to_owned())
+        ]
+    );
+    assert_eq!(
+        RoutePathMatched::from([
+            RoutePathMatchedSegment::Static("foo".to_owned()),
+            RoutePathMatchedSegment::Static("bar".to_owned()),
+            RoutePathMatchedSegment::Static("baz".to_owned()),
+        ])
+        .with_segments(1..),
+        &[
+            RoutePathMatchedSegment::Static("bar".to_owned()),
+            RoutePathMatchedSegment::Static("baz".to_owned())
+        ]
+    );
+    assert_eq!(
+        RoutePathMatched::from([
+            RoutePathMatchedSegment::Static("foo".to_owned()),
+            RoutePathMatchedSegment::Static("bar".to_owned()),
+            RoutePathMatchedSegment::Static("baz".to_owned()),
+        ])
+        .with_segments(..2),
+        &[
+            RoutePathMatchedSegment::Static("foo".to_owned()),
+            RoutePathMatchedSegment::Static("bar".to_owned())
+        ]
+    );
+    assert_eq!(
+        RoutePathMatched::from([
+            RoutePathMatchedSegment::Static("foo".to_owned()),
+            RoutePathMatchedSegment::Static("bar".to_owned()),
+            RoutePathMatchedSegment::Static("baz".to_owned()),
+        ])
+        .with_segments(..=2),
+        &[
+            RoutePathMatchedSegment::Static("foo".to_owned()),
+            RoutePathMatchedSegment::Static("bar".to_owned()),
+            RoutePathMatchedSegment::Static("baz".to_owned())
+        ]
+    );
+    assert_eq!(
+        RoutePathMatched::from([
+            RoutePathMatchedSegment::Static("foo".to_owned()),
+            RoutePathMatchedSegment::Static("bar".to_owned()),
+            RoutePathMatchedSegment::Static("baz".to_owned()),
+        ])
+        .with_segments(1..2),
+        &[RoutePathMatchedSegment::Static("bar".to_owned())]
+    );
+    assert_eq!(
+        RoutePathMatched::from([
+            RoutePathMatchedSegment::Static("foo".to_owned()),
+            RoutePathMatchedSegment::Static("bar".to_owned()),
+            RoutePathMatchedSegment::Static("baz".to_owned()),
+        ])
+        .with_segments(1..=2),
+        &[
+            RoutePathMatchedSegment::Static("bar".to_owned()),
+            RoutePathMatchedSegment::Static("baz".to_owned())
+        ]
+    );
+
+    assert_eq!(
+        RoutePathMatched::from([
+            RoutePathMatchedSegment::Static("foo".to_owned()),
+            RoutePathMatchedSegment::Static("bar".to_owned()),
+            RoutePathMatchedSegment::Static("baz".to_owned()),
+        ])
+        .of_segments(..),
+        RoutePathMatched::from([
+            RoutePathMatchedSegment::Static("foo".to_owned()),
+            RoutePathMatchedSegment::Static("bar".to_owned()),
+            RoutePathMatchedSegment::Static("baz".to_owned()),
+        ])
+    );
+    assert_eq!(
+        RoutePathMatched::from([
+            RoutePathMatchedSegment::Static("foo".to_owned()),
+            RoutePathMatchedSegment::Static("bar".to_owned()),
+            RoutePathMatchedSegment::Static("baz".to_owned()),
+        ])
+        .of_segments(1..),
+        RoutePathMatched::from([
+            RoutePathMatchedSegment::Static("bar".to_owned()),
+            RoutePathMatchedSegment::Static("baz".to_owned()),
+        ])
+    );
+    assert_eq!(
+        RoutePathMatched::from([
+            RoutePathMatchedSegment::Static("foo".to_owned()),
+            RoutePathMatchedSegment::Static("bar".to_owned()),
+            RoutePathMatchedSegment::Static("baz".to_owned()),
+        ])
+        .of_segments(..2),
+        RoutePathMatched::from([
+            RoutePathMatchedSegment::Static("foo".to_owned()),
+            RoutePathMatchedSegment::Static("bar".to_owned()),
+        ])
+    );
+    assert_eq!(
+        RoutePathMatched::from([
+            RoutePathMatchedSegment::Static("foo".to_owned()),
+            RoutePathMatchedSegment::Static("bar".to_owned()),
+            RoutePathMatchedSegment::Static("baz".to_owned()),
+        ])
+        .of_segments(..=2),
+        RoutePathMatched::from([
+            RoutePathMatchedSegment::Static("foo".to_owned()),
+            RoutePathMatchedSegment::Static("bar".to_owned()),
+            RoutePathMatchedSegment::Static("baz".to_owned()),
+        ])
+    );
+    assert_eq!(
+        RoutePathMatched::from([
+            RoutePathMatchedSegment::Static("foo".to_owned()),
+            RoutePathMatchedSegment::Static("bar".to_owned()),
+            RoutePathMatchedSegment::Static("baz".to_owned()),
+        ])
+        .of_segments(1..2),
+        RoutePathMatched::from([RoutePathMatchedSegment::Static("bar".to_owned()),])
+    );
+    assert_eq!(
+        RoutePathMatched::from([
+            RoutePathMatchedSegment::Static("foo".to_owned()),
+            RoutePathMatchedSegment::Static("bar".to_owned()),
+            RoutePathMatchedSegment::Static("baz".to_owned()),
+        ])
+        .of_segments(1..=2),
+        RoutePathMatched::from([
+            RoutePathMatchedSegment::Static("bar".to_owned()),
+            RoutePathMatchedSegment::Static("baz".to_owned()),
+        ])
+    );
+
+    assert_eq!(RoutePathMatched::from([]).split_first(), None);
+    assert_eq!(
+        RoutePathMatched::from([RoutePathMatchedSegment::Static("foo".to_owned()),]).split_first(),
+        Some((
+            RoutePathMatchedSegment::Static("foo".to_owned()),
+            RoutePathMatched::from([])
+        ))
+    );
+    assert_eq!(
+        RoutePathMatched::from([
+            RoutePathMatchedSegment::Static("foo".to_owned()),
+            RoutePathMatchedSegment::Static("bar".to_owned()),
+        ])
+        .split_first(),
+        Some((
+            RoutePathMatchedSegment::Static("foo".to_owned()),
+            RoutePathMatched::from([RoutePathMatchedSegment::Static("bar".to_owned()),])
+        ))
+    );
+    assert_eq!(
+        RoutePathMatched::from([
+            RoutePathMatchedSegment::Static("foo".to_owned()),
+            RoutePathMatchedSegment::Static("bar".to_owned()),
+            RoutePathMatchedSegment::Static("baz".to_owned()),
+        ])
+        .split_first(),
+        Some((
+            RoutePathMatchedSegment::Static("foo".to_owned()),
+            RoutePathMatched::from([
+                RoutePathMatchedSegment::Static("bar".to_owned()),
+                RoutePathMatchedSegment::Static("baz".to_owned()),
+            ])
+        ))
+    );
+}

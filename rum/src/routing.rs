@@ -66,11 +66,6 @@ impl RoutePath {
         Self(Arc::from(components))
     }
 
-    /// Returns an iterator over the segments of the route path.
-    pub fn iter(&self) -> Iter<'_, RoutePathSegment> {
-        self.0.iter()
-    }
-
     /// Returns the number of segments in the path.
     pub fn num_segments(&self) -> usize {
         self.0.len()
@@ -87,13 +82,13 @@ impl RoutePath {
         R: RangeBounds<usize>,
     {
         let start = match range.start_bound() {
-            Bound::Excluded(bound) => *bound,
-            Bound::Included(bound) => bound + 1,
+            Bound::Included(bound) => *bound,
+            Bound::Excluded(_) => unreachable!(),
             Bound::Unbounded => 0,
         };
         let end = match range.end_bound() {
-            Bound::Excluded(bound) => *bound,
             Bound::Included(bound) => bound + 1,
+            Bound::Excluded(bound) => *bound,
             Bound::Unbounded => self.0.len(),
         };
 
@@ -179,6 +174,12 @@ impl From<&[RoutePathSegment]> for RoutePath {
     }
 }
 
+impl<const N: usize> From<[RoutePathSegment; N]> for RoutePath {
+    fn from(value: [RoutePathSegment; N]) -> Self {
+        Self(Arc::from(value))
+    }
+}
+
 impl Deref for RoutePath {
     type Target = [RoutePathSegment];
 
@@ -205,6 +206,12 @@ impl<'a> IntoIterator for &'a RoutePath {
 impl FromIterator<RoutePathSegment> for RoutePath {
     fn from_iter<T: IntoIterator<Item = RoutePathSegment>>(iter: T) -> Self {
         Self(iter.into_iter().collect())
+    }
+}
+
+impl<'a> FromIterator<&'a RoutePathSegment> for RoutePath {
+    fn from_iter<T: IntoIterator<Item = &'a RoutePathSegment>>(iter: T) -> Self {
+        Self(iter.into_iter().map(ToOwned::to_owned).collect())
     }
 }
 
@@ -238,11 +245,6 @@ impl RoutePathMatched {
         Self(Arc::from(components))
     }
 
-    /// Returns an iterator over the segments of the route path.
-    pub fn iter(&self) -> Iter<'_, RoutePathMatchedSegment> {
-        self.0.iter()
-    }
-
     /// Returns the number of segments in the path.
     pub fn num_segments(&self) -> usize {
         self.0.len()
@@ -259,13 +261,13 @@ impl RoutePathMatched {
         R: RangeBounds<usize>,
     {
         let start = match range.start_bound() {
-            Bound::Excluded(bound) => *bound,
-            Bound::Included(bound) => bound + 1,
+            Bound::Included(bound) => *bound,
+            Bound::Excluded(_) => unreachable!(),
             Bound::Unbounded => 0,
         };
         let end = match range.end_bound() {
-            Bound::Excluded(bound) => *bound,
             Bound::Included(bound) => bound + 1,
+            Bound::Excluded(bound) => *bound,
             Bound::Unbounded => self.0.len(),
         };
 
@@ -308,6 +310,12 @@ impl From<&[RoutePathMatchedSegment]> for RoutePathMatched {
     }
 }
 
+impl<const N: usize> From<[RoutePathMatchedSegment; N]> for RoutePathMatched {
+    fn from(value: [RoutePathMatchedSegment; N]) -> Self {
+        Self(Arc::from(value))
+    }
+}
+
 impl Deref for RoutePathMatched {
     type Target = [RoutePathMatchedSegment];
 
@@ -334,6 +342,12 @@ impl<'a> IntoIterator for &'a RoutePathMatched {
 impl FromIterator<RoutePathMatchedSegment> for RoutePathMatched {
     fn from_iter<T: IntoIterator<Item = RoutePathMatchedSegment>>(iter: T) -> Self {
         Self(iter.into_iter().collect())
+    }
+}
+
+impl<'a> FromIterator<&'a RoutePathMatchedSegment> for RoutePathMatched {
+    fn from_iter<T: IntoIterator<Item = &'a RoutePathMatchedSegment>>(iter: T) -> Self {
+        Self(iter.into_iter().map(ToOwned::to_owned).collect())
     }
 }
 

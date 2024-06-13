@@ -300,6 +300,15 @@ where
     }
 }
 
+impl<T> IntoResponse for (T,)
+where
+    T: IntoResponse,
+{
+    fn into_response(self) -> Response {
+        self.0.into_response()
+    }
+}
+
 /// Implements `IntoResponse` for as many tuples as specified.
 macro_rules! impl_into_response_tuples {
     ( $_:ty ) => {};

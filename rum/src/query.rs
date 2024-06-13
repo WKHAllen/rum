@@ -251,6 +251,26 @@ where
     }
 }
 
+#[cfg(feature = "nightly")]
+impl<const Q: &'static str, T> Borrow<T> for QueryParam<Q, T>
+where
+    T: ParseQueryParam,
+{
+    fn borrow(&self) -> &T {
+        &self.0
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<const Q: &'static str, T> BorrowMut<T> for QueryParam<Q, T>
+where
+    T: ParseQueryParam,
+{
+    fn borrow_mut(&mut self) -> &mut T {
+        &mut self.0
+    }
+}
+
 /// A single optional query parameter.
 #[cfg(feature = "nightly")]
 pub struct QueryParamOptional<const Q: &'static str, T = String>(pub(crate) Option<T>)
@@ -286,6 +306,26 @@ where
     T: ParseQueryParam,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<const Q: &'static str, T> Borrow<Option<T>> for QueryParamOptional<Q, T>
+where
+    T: ParseQueryParam,
+{
+    fn borrow(&self) -> &Option<T> {
+        &self.0
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<const Q: &'static str, T> BorrowMut<Option<T>> for QueryParamOptional<Q, T>
+where
+    T: ParseQueryParam,
+{
+    fn borrow_mut(&mut self) -> &mut Option<T> {
         &mut self.0
     }
 }

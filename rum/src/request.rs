@@ -115,6 +115,11 @@ impl RequestInner {
         &self.body
     }
 
+    /// Gets the request body as a string.
+    pub fn body_str(&self) -> Result<&str> {
+        Ok(std::str::from_utf8(&self.body)?)
+    }
+
     /// Deserializes the JSON request body into an instance of `T`.
     pub fn body_json<T>(&self) -> Result<T>
     where
@@ -358,6 +363,12 @@ impl FromRequest for Method {
 impl FromRequest for RoutePath {
     fn from_request(req: &Request) -> Result<Self> {
         Ok(req.path.clone())
+    }
+}
+
+impl FromRequest for RoutePathMatched {
+    fn from_request(req: &Request) -> Result<Self> {
+        Ok(req.matched_path.clone())
     }
 }
 

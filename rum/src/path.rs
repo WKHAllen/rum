@@ -168,3 +168,23 @@ where
         &mut self.0
     }
 }
+
+#[cfg(feature = "nightly")]
+impl<const P: &'static str, T> Borrow<T> for PathParam<P, T>
+where
+    T: ParsePathParam,
+{
+    fn borrow(&self) -> &T {
+        &self.0
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<const P: &'static str, T> BorrowMut<T> for PathParam<P, T>
+where
+    T: ParsePathParam,
+{
+    fn borrow_mut(&mut self) -> &mut T {
+        &mut self.0
+    }
+}

@@ -123,8 +123,8 @@ impl Borrow<HashMap<String, Vec<String>>> for HeaderMap {
 /// [`into_inner`](Self::into_inner).
 ///
 /// This is limited by implementation details, so all fields in `T` must have
-/// values of type `String` or `Option<String>`. Attempts to parse header values
-/// from other types will fail.
+/// values of type `Vec<String>` or `Option<Vec<String>>`. Attempts to parse
+/// header values from other types will fail.
 #[derive(Debug, Clone)]
 pub struct Headers<T>(pub(crate) T)
 where
@@ -236,6 +236,26 @@ where
     }
 }
 
+#[cfg(feature = "nightly")]
+impl<const H: &'static str, T> Borrow<Vec<T>> for Header<H, T>
+where
+    T: ParseHeader,
+{
+    fn borrow(&self) -> &Vec<T> {
+        &self.0
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<const H: &'static str, T> BorrowMut<Vec<T>> for Header<H, T>
+where
+    T: ParseHeader,
+{
+    fn borrow_mut(&mut self) -> &mut Vec<T> {
+        &mut self.0
+    }
+}
+
 /// A single optional request header.
 #[cfg(feature = "nightly")]
 pub struct HeaderOptional<const H: &'static str, T = String>(pub(crate) Option<Vec<T>>)
@@ -271,6 +291,26 @@ where
     T: ParseHeader,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<const H: &'static str, T> Borrow<Option<Vec<T>>> for HeaderOptional<H, T>
+where
+    T: ParseHeader,
+{
+    fn borrow(&self) -> &Option<Vec<T>> {
+        &self.0
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<const H: &'static str, T> BorrowMut<Option<Vec<T>>> for HeaderOptional<H, T>
+where
+    T: ParseHeader,
+{
+    fn borrow_mut(&mut self) -> &mut Option<Vec<T>> {
         &mut self.0
     }
 }

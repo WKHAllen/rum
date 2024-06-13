@@ -49,7 +49,7 @@ pub mod prelude {
     pub use crate::query::{QueryParamMap, QueryParams};
     pub use crate::request::{FromRequest, Request};
     pub use crate::response::{IntoResponse, Response};
-    pub use crate::routing::RouteGroup;
+    pub use crate::routing::{RouteGroup, RoutePath, RoutePathMatched};
     pub use crate::server::{
         error_report_stream, shutdown_signal, ErrorReceiver, ErrorSender, Server, ShutdownReceiver,
         ShutdownSender,
