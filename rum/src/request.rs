@@ -16,7 +16,7 @@ use crate::path::{ParsePathParam, PathParamMap, PathParams};
 use crate::query::{ParseQueryParam, QueryParamMap, QueryParams};
 #[cfg(feature = "nightly")]
 use crate::query::{QueryParam, QueryParamOptional};
-use crate::routing::{RoutePath, RoutePathMatched, RoutePathMatchedSegment};
+use crate::routing::{RoutePath, RoutePathMatched, RoutePathMatchedSegment, RoutePathString};
 use crate::state::{LocalState, State, StateManager};
 use http_body_util::BodyExt;
 use hyper::body::Incoming;
@@ -357,6 +357,12 @@ where
 impl FromRequest for Method {
     fn from_request(req: &Request) -> Result<Self> {
         Ok(req.method.clone())
+    }
+}
+
+impl FromRequest for RoutePathString {
+    fn from_request(req: &Request) -> Result<Self> {
+        Ok(Self(req.path.to_string()))
     }
 }
 

@@ -351,6 +351,37 @@ impl<'a> FromIterator<&'a RoutePathMatchedSegment> for RoutePathMatched {
     }
 }
 
+/// A route path represented as a string.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RoutePathString(pub String);
+
+impl RoutePathString {
+    /// Moves the inner `String` out of this wrapper.
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+}
+
+impl From<RoutePath> for RoutePathString {
+    fn from(value: RoutePath) -> Self {
+        Self(value.to_string())
+    }
+}
+
+impl Deref for RoutePathString {
+    type Target = String;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Borrow<String> for RoutePathString {
+    fn borrow(&self) -> &String {
+        &self.0
+    }
+}
+
 /// A shareable route handler.
 #[allow(clippy::type_complexity)]
 #[derive(Clone)]

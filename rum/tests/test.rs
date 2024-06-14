@@ -3,7 +3,9 @@ use rum::prelude::*;
 use rum::routing::{RoutePathMatchedSegment, RoutePathSegment};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use std::convert::Infallible;
 use std::io;
+use std::str::FromStr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::spawn;
@@ -1019,6 +1021,29 @@ async fn test_extract_method() {
         .unwrap();
 
     let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_extract_route_path_string() {
+    async fn extract_route_path(req: Request) -> Response {
+        let route_path_str = RoutePathString::from_request(&req).unwrap();
+        assert_eq!(*route_path_str, "/test/123");
+        assert_eq!(route_path_str.into_inner(), "/test/123");
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test/{num}", extract_route_path))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test/123", |req| req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
 
     let errors = server.stop().await;
@@ -2076,4 +2101,924 @@ async fn test_route_path_matched() {
             ])
         ))
     );
+}
+
+#[tokio::test]
+async fn test_path_param_parsing() {
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct TestCustom(String);
+
+    impl FromStr for TestCustom {
+        type Err = Infallible;
+
+        fn from_str(s: &str) -> Result<Self, Self::Err> {
+            Ok(Self(s.to_uppercase()))
+        }
+    }
+
+    async fn path_param_parse(req: Request) -> Response {
+        assert!(matches!(
+            PathParam::<"bool", bool>::from_request(&req).map(PathParam::into_inner),
+            Ok(true)
+        ));
+        assert!(PathParam::<"bool", char>::from_request(&req).is_err());
+        assert!(PathParam::<"bool", f32>::from_request(&req).is_err());
+        assert!(PathParam::<"bool", f64>::from_request(&req).is_err());
+        assert!(PathParam::<"bool", i8>::from_request(&req).is_err());
+        assert!(PathParam::<"bool", i16>::from_request(&req).is_err());
+        assert!(PathParam::<"bool", i32>::from_request(&req).is_err());
+        assert!(PathParam::<"bool", i64>::from_request(&req).is_err());
+        assert!(PathParam::<"bool", i128>::from_request(&req).is_err());
+        assert!(PathParam::<"bool", isize>::from_request(&req).is_err());
+        assert!(PathParam::<"bool", u8>::from_request(&req).is_err());
+        assert!(PathParam::<"bool", u16>::from_request(&req).is_err());
+        assert!(PathParam::<"bool", u32>::from_request(&req).is_err());
+        assert!(PathParam::<"bool", u64>::from_request(&req).is_err());
+        assert!(PathParam::<"bool", u128>::from_request(&req).is_err());
+        assert!(PathParam::<"bool", usize>::from_request(&req).is_err());
+        assert!(matches!(
+            PathParam::<"bool", String>::from_request(&req).map(PathParam::into_inner),
+            Ok(value) if value == "true"
+        ));
+        assert!(
+            matches!(PathParam::<"bool", TestCustom>::from_request(&req).map(PathParam::into_inner), Ok(value) if value.0 == "TRUE")
+        );
+
+        assert!(PathParam::<"char", bool>::from_request(&req).is_err());
+        assert!(matches!(
+            PathParam::<"char", char>::from_request(&req).map(PathParam::into_inner),
+            Ok('c')
+        ));
+        assert!(PathParam::<"char", f32>::from_request(&req).is_err());
+        assert!(PathParam::<"char", f64>::from_request(&req).is_err());
+        assert!(PathParam::<"char", i8>::from_request(&req).is_err());
+        assert!(PathParam::<"char", i16>::from_request(&req).is_err());
+        assert!(PathParam::<"char", i32>::from_request(&req).is_err());
+        assert!(PathParam::<"char", i64>::from_request(&req).is_err());
+        assert!(PathParam::<"char", i128>::from_request(&req).is_err());
+        assert!(PathParam::<"char", isize>::from_request(&req).is_err());
+        assert!(PathParam::<"char", u8>::from_request(&req).is_err());
+        assert!(PathParam::<"char", u16>::from_request(&req).is_err());
+        assert!(PathParam::<"char", u32>::from_request(&req).is_err());
+        assert!(PathParam::<"char", u64>::from_request(&req).is_err());
+        assert!(PathParam::<"char", u128>::from_request(&req).is_err());
+        assert!(PathParam::<"char", usize>::from_request(&req).is_err());
+        assert!(matches!(
+            PathParam::<"char", String>::from_request(&req).map(PathParam::into_inner),
+            Ok(value) if value == "c"
+        ));
+        assert!(
+            matches!(PathParam::<"char", TestCustom>::from_request(&req).map(PathParam::into_inner), Ok(value) if value.0 == "C")
+        );
+
+        assert!(PathParam::<"int", bool>::from_request(&req).is_err());
+        assert!(PathParam::<"int", char>::from_request(&req).is_err());
+        assert!(matches!(
+            PathParam::<"int", f32>::from_request(&req).map(PathParam::into_inner),
+            Ok(1729.0)
+        ));
+        assert!(matches!(
+            PathParam::<"int", f64>::from_request(&req).map(PathParam::into_inner),
+            Ok(1729.0)
+        ));
+        assert!(PathParam::<"int", i8>::from_request(&req).is_err());
+        assert!(matches!(
+            PathParam::<"int", i16>::from_request(&req).map(PathParam::into_inner),
+            Ok(1729)
+        ));
+        assert!(matches!(
+            PathParam::<"int", i32>::from_request(&req).map(PathParam::into_inner),
+            Ok(1729)
+        ));
+        assert!(matches!(
+            PathParam::<"int", i64>::from_request(&req).map(PathParam::into_inner),
+            Ok(1729)
+        ));
+        assert!(matches!(
+            PathParam::<"int", i128>::from_request(&req).map(PathParam::into_inner),
+            Ok(1729)
+        ));
+        assert!(matches!(
+            PathParam::<"int", isize>::from_request(&req).map(PathParam::into_inner),
+            Ok(1729)
+        ));
+        assert!(PathParam::<"int", u8>::from_request(&req).is_err());
+        assert!(matches!(
+            PathParam::<"int", u16>::from_request(&req).map(PathParam::into_inner),
+            Ok(1729)
+        ));
+        assert!(matches!(
+            PathParam::<"int", u32>::from_request(&req).map(PathParam::into_inner),
+            Ok(1729)
+        ));
+        assert!(matches!(
+            PathParam::<"int", u64>::from_request(&req).map(PathParam::into_inner),
+            Ok(1729)
+        ));
+        assert!(matches!(
+            PathParam::<"int", u128>::from_request(&req).map(PathParam::into_inner),
+            Ok(1729)
+        ));
+        assert!(matches!(
+            PathParam::<"int", usize>::from_request(&req).map(PathParam::into_inner),
+            Ok(1729)
+        ));
+        assert!(matches!(
+            PathParam::<"int", String>::from_request(&req).map(PathParam::into_inner),
+            Ok(value) if value == "1729"
+        ));
+        assert!(
+            matches!(PathParam::<"int", TestCustom>::from_request(&req).map(PathParam::into_inner), Ok(value) if value.0 == "1729")
+        );
+
+        assert!(PathParam::<"float", bool>::from_request(&req).is_err());
+        assert!(PathParam::<"float", char>::from_request(&req).is_err());
+        assert!(matches!(
+            PathParam::<"float", f32>::from_request(&req).map(PathParam::into_inner),
+            Ok(1.618)
+        ));
+        assert!(matches!(
+            PathParam::<"float", f64>::from_request(&req).map(PathParam::into_inner),
+            Ok(1.618)
+        ));
+        assert!(PathParam::<"float", i8>::from_request(&req).is_err());
+        assert!(PathParam::<"float", i16>::from_request(&req).is_err());
+        assert!(PathParam::<"float", i32>::from_request(&req).is_err());
+        assert!(PathParam::<"float", i64>::from_request(&req).is_err());
+        assert!(PathParam::<"float", i128>::from_request(&req).is_err());
+        assert!(PathParam::<"float", isize>::from_request(&req).is_err());
+        assert!(PathParam::<"float", u8>::from_request(&req).is_err());
+        assert!(PathParam::<"float", u16>::from_request(&req).is_err());
+        assert!(PathParam::<"float", u32>::from_request(&req).is_err());
+        assert!(PathParam::<"float", u64>::from_request(&req).is_err());
+        assert!(PathParam::<"float", u128>::from_request(&req).is_err());
+        assert!(PathParam::<"float", usize>::from_request(&req).is_err());
+        assert!(matches!(
+            PathParam::<"float", String>::from_request(&req).map(PathParam::into_inner),
+            Ok(value) if value == "1.618"
+        ));
+        assert!(
+            matches!(PathParam::<"float", TestCustom>::from_request(&req).map(PathParam::into_inner), Ok(value) if value.0 == "1.618")
+        );
+
+        assert!(PathParam::<"string", bool>::from_request(&req).is_err());
+        assert!(PathParam::<"string", char>::from_request(&req).is_err());
+        assert!(PathParam::<"string", f32>::from_request(&req).is_err());
+        assert!(PathParam::<"string", f64>::from_request(&req).is_err());
+        assert!(PathParam::<"string", i8>::from_request(&req).is_err());
+        assert!(PathParam::<"string", i16>::from_request(&req).is_err());
+        assert!(PathParam::<"string", i32>::from_request(&req).is_err());
+        assert!(PathParam::<"string", i64>::from_request(&req).is_err());
+        assert!(PathParam::<"string", i128>::from_request(&req).is_err());
+        assert!(PathParam::<"string", isize>::from_request(&req).is_err());
+        assert!(PathParam::<"string", u8>::from_request(&req).is_err());
+        assert!(PathParam::<"string", u16>::from_request(&req).is_err());
+        assert!(PathParam::<"string", u32>::from_request(&req).is_err());
+        assert!(PathParam::<"string", u64>::from_request(&req).is_err());
+        assert!(PathParam::<"string", u128>::from_request(&req).is_err());
+        assert!(PathParam::<"string", usize>::from_request(&req).is_err());
+        assert!(matches!(
+            PathParam::<"string", String>::from_request(&req).map(PathParam::into_inner),
+            Ok(value) if value == "Rust"
+        ));
+        assert!(
+            matches!(PathParam::<"string", TestCustom>::from_request(&req).map(PathParam::into_inner), Ok(value) if value.0 == "RUST")
+        );
+
+        assert!(PathParam::<"custom", bool>::from_request(&req).is_err());
+        assert!(PathParam::<"custom", char>::from_request(&req).is_err());
+        assert!(PathParam::<"custom", f32>::from_request(&req).is_err());
+        assert!(PathParam::<"custom", f64>::from_request(&req).is_err());
+        assert!(PathParam::<"custom", i8>::from_request(&req).is_err());
+        assert!(PathParam::<"custom", i16>::from_request(&req).is_err());
+        assert!(PathParam::<"custom", i32>::from_request(&req).is_err());
+        assert!(PathParam::<"custom", i64>::from_request(&req).is_err());
+        assert!(PathParam::<"custom", i128>::from_request(&req).is_err());
+        assert!(PathParam::<"custom", isize>::from_request(&req).is_err());
+        assert!(PathParam::<"custom", u8>::from_request(&req).is_err());
+        assert!(PathParam::<"custom", u16>::from_request(&req).is_err());
+        assert!(PathParam::<"custom", u32>::from_request(&req).is_err());
+        assert!(PathParam::<"custom", u64>::from_request(&req).is_err());
+        assert!(PathParam::<"custom", u128>::from_request(&req).is_err());
+        assert!(PathParam::<"custom", usize>::from_request(&req).is_err());
+        assert!(matches!(
+            PathParam::<"custom", String>::from_request(&req).map(PathParam::into_inner),
+            Ok(value) if value == "hello"
+        ));
+        assert!(
+            matches!(PathParam::<"custom", TestCustom>::from_request(&req).map(PathParam::into_inner), Ok(value) if value.0 == "HELLO")
+        );
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| {
+            server.get(
+                "/test/{bool}/{char}/{int}/{float}/{string}/{custom}",
+                path_param_parse,
+            )
+        })
+        .start()
+        .await
+        .unwrap();
+
+    let res = server
+        .get("/test/true/c/1729/1.618/Rust/hello", |req| req)
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_query_param_parsing() {
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct TestCustom(String);
+
+    impl FromStr for TestCustom {
+        type Err = Infallible;
+
+        fn from_str(s: &str) -> Result<Self, Self::Err> {
+            Ok(Self(s.to_uppercase()))
+        }
+    }
+
+    async fn query_param_parse(req: Request) -> Response {
+        assert!(matches!(
+            QueryParam::<"bool", bool>::from_request(&req).map(QueryParam::into_inner),
+            Ok(true)
+        ));
+        assert!(QueryParam::<"bool", char>::from_request(&req).is_err());
+        assert!(QueryParam::<"bool", f32>::from_request(&req).is_err());
+        assert!(QueryParam::<"bool", f64>::from_request(&req).is_err());
+        assert!(QueryParam::<"bool", i8>::from_request(&req).is_err());
+        assert!(QueryParam::<"bool", i16>::from_request(&req).is_err());
+        assert!(QueryParam::<"bool", i32>::from_request(&req).is_err());
+        assert!(QueryParam::<"bool", i64>::from_request(&req).is_err());
+        assert!(QueryParam::<"bool", i128>::from_request(&req).is_err());
+        assert!(QueryParam::<"bool", isize>::from_request(&req).is_err());
+        assert!(QueryParam::<"bool", u8>::from_request(&req).is_err());
+        assert!(QueryParam::<"bool", u16>::from_request(&req).is_err());
+        assert!(QueryParam::<"bool", u32>::from_request(&req).is_err());
+        assert!(QueryParam::<"bool", u64>::from_request(&req).is_err());
+        assert!(QueryParam::<"bool", u128>::from_request(&req).is_err());
+        assert!(QueryParam::<"bool", usize>::from_request(&req).is_err());
+        assert!(matches!(
+            QueryParam::<"bool", String>::from_request(&req).map(QueryParam::into_inner),
+            Ok(value) if value == "true"
+        ));
+        assert!(
+            matches!(QueryParam::<"bool", TestCustom>::from_request(&req).map(QueryParam::into_inner), Ok(value) if value.0 == "TRUE")
+        );
+
+        assert!(QueryParam::<"char", bool>::from_request(&req).is_err());
+        assert!(matches!(
+            QueryParam::<"char", char>::from_request(&req).map(QueryParam::into_inner),
+            Ok('c')
+        ));
+        assert!(QueryParam::<"char", f32>::from_request(&req).is_err());
+        assert!(QueryParam::<"char", f64>::from_request(&req).is_err());
+        assert!(QueryParam::<"char", i8>::from_request(&req).is_err());
+        assert!(QueryParam::<"char", i16>::from_request(&req).is_err());
+        assert!(QueryParam::<"char", i32>::from_request(&req).is_err());
+        assert!(QueryParam::<"char", i64>::from_request(&req).is_err());
+        assert!(QueryParam::<"char", i128>::from_request(&req).is_err());
+        assert!(QueryParam::<"char", isize>::from_request(&req).is_err());
+        assert!(QueryParam::<"char", u8>::from_request(&req).is_err());
+        assert!(QueryParam::<"char", u16>::from_request(&req).is_err());
+        assert!(QueryParam::<"char", u32>::from_request(&req).is_err());
+        assert!(QueryParam::<"char", u64>::from_request(&req).is_err());
+        assert!(QueryParam::<"char", u128>::from_request(&req).is_err());
+        assert!(QueryParam::<"char", usize>::from_request(&req).is_err());
+        assert!(matches!(
+            QueryParam::<"char", String>::from_request(&req).map(QueryParam::into_inner),
+            Ok(value) if value == "c"
+        ));
+        assert!(
+            matches!(QueryParam::<"char", TestCustom>::from_request(&req).map(QueryParam::into_inner), Ok(value) if value.0 == "C")
+        );
+
+        assert!(QueryParam::<"int", bool>::from_request(&req).is_err());
+        assert!(QueryParam::<"int", char>::from_request(&req).is_err());
+        assert!(matches!(
+            QueryParam::<"int", f32>::from_request(&req).map(QueryParam::into_inner),
+            Ok(1729.0)
+        ));
+        assert!(matches!(
+            QueryParam::<"int", f64>::from_request(&req).map(QueryParam::into_inner),
+            Ok(1729.0)
+        ));
+        assert!(QueryParam::<"int", i8>::from_request(&req).is_err());
+        assert!(matches!(
+            QueryParam::<"int", i16>::from_request(&req).map(QueryParam::into_inner),
+            Ok(1729)
+        ));
+        assert!(matches!(
+            QueryParam::<"int", i32>::from_request(&req).map(QueryParam::into_inner),
+            Ok(1729)
+        ));
+        assert!(matches!(
+            QueryParam::<"int", i64>::from_request(&req).map(QueryParam::into_inner),
+            Ok(1729)
+        ));
+        assert!(matches!(
+            QueryParam::<"int", i128>::from_request(&req).map(QueryParam::into_inner),
+            Ok(1729)
+        ));
+        assert!(matches!(
+            QueryParam::<"int", isize>::from_request(&req).map(QueryParam::into_inner),
+            Ok(1729)
+        ));
+        assert!(QueryParam::<"int", u8>::from_request(&req).is_err());
+        assert!(matches!(
+            QueryParam::<"int", u16>::from_request(&req).map(QueryParam::into_inner),
+            Ok(1729)
+        ));
+        assert!(matches!(
+            QueryParam::<"int", u32>::from_request(&req).map(QueryParam::into_inner),
+            Ok(1729)
+        ));
+        assert!(matches!(
+            QueryParam::<"int", u64>::from_request(&req).map(QueryParam::into_inner),
+            Ok(1729)
+        ));
+        assert!(matches!(
+            QueryParam::<"int", u128>::from_request(&req).map(QueryParam::into_inner),
+            Ok(1729)
+        ));
+        assert!(matches!(
+            QueryParam::<"int", usize>::from_request(&req).map(QueryParam::into_inner),
+            Ok(1729)
+        ));
+        assert!(matches!(
+            QueryParam::<"int", String>::from_request(&req).map(QueryParam::into_inner),
+            Ok(value) if value == "1729"
+        ));
+        assert!(
+            matches!(QueryParam::<"int", TestCustom>::from_request(&req).map(QueryParam::into_inner), Ok(value) if value.0 == "1729")
+        );
+
+        assert!(QueryParam::<"float", bool>::from_request(&req).is_err());
+        assert!(QueryParam::<"float", char>::from_request(&req).is_err());
+        assert!(matches!(
+            QueryParam::<"float", f32>::from_request(&req).map(QueryParam::into_inner),
+            Ok(1.618)
+        ));
+        assert!(matches!(
+            QueryParam::<"float", f64>::from_request(&req).map(QueryParam::into_inner),
+            Ok(1.618)
+        ));
+        assert!(QueryParam::<"float", i8>::from_request(&req).is_err());
+        assert!(QueryParam::<"float", i16>::from_request(&req).is_err());
+        assert!(QueryParam::<"float", i32>::from_request(&req).is_err());
+        assert!(QueryParam::<"float", i64>::from_request(&req).is_err());
+        assert!(QueryParam::<"float", i128>::from_request(&req).is_err());
+        assert!(QueryParam::<"float", isize>::from_request(&req).is_err());
+        assert!(QueryParam::<"float", u8>::from_request(&req).is_err());
+        assert!(QueryParam::<"float", u16>::from_request(&req).is_err());
+        assert!(QueryParam::<"float", u32>::from_request(&req).is_err());
+        assert!(QueryParam::<"float", u64>::from_request(&req).is_err());
+        assert!(QueryParam::<"float", u128>::from_request(&req).is_err());
+        assert!(QueryParam::<"float", usize>::from_request(&req).is_err());
+        assert!(matches!(
+            QueryParam::<"float", String>::from_request(&req).map(QueryParam::into_inner),
+            Ok(value) if value == "1.618"
+        ));
+        assert!(
+            matches!(QueryParam::<"float", TestCustom>::from_request(&req).map(QueryParam::into_inner), Ok(value) if value.0 == "1.618")
+        );
+
+        assert!(QueryParam::<"string", bool>::from_request(&req).is_err());
+        assert!(QueryParam::<"string", char>::from_request(&req).is_err());
+        assert!(QueryParam::<"string", f32>::from_request(&req).is_err());
+        assert!(QueryParam::<"string", f64>::from_request(&req).is_err());
+        assert!(QueryParam::<"string", i8>::from_request(&req).is_err());
+        assert!(QueryParam::<"string", i16>::from_request(&req).is_err());
+        assert!(QueryParam::<"string", i32>::from_request(&req).is_err());
+        assert!(QueryParam::<"string", i64>::from_request(&req).is_err());
+        assert!(QueryParam::<"string", i128>::from_request(&req).is_err());
+        assert!(QueryParam::<"string", isize>::from_request(&req).is_err());
+        assert!(QueryParam::<"string", u8>::from_request(&req).is_err());
+        assert!(QueryParam::<"string", u16>::from_request(&req).is_err());
+        assert!(QueryParam::<"string", u32>::from_request(&req).is_err());
+        assert!(QueryParam::<"string", u64>::from_request(&req).is_err());
+        assert!(QueryParam::<"string", u128>::from_request(&req).is_err());
+        assert!(QueryParam::<"string", usize>::from_request(&req).is_err());
+        assert!(matches!(
+            QueryParam::<"string", String>::from_request(&req).map(QueryParam::into_inner),
+            Ok(value) if value == "Rust"
+        ));
+        assert!(
+            matches!(QueryParam::<"string", TestCustom>::from_request(&req).map(QueryParam::into_inner), Ok(value) if value.0 == "RUST")
+        );
+
+        assert!(QueryParam::<"custom", bool>::from_request(&req).is_err());
+        assert!(QueryParam::<"custom", char>::from_request(&req).is_err());
+        assert!(QueryParam::<"custom", f32>::from_request(&req).is_err());
+        assert!(QueryParam::<"custom", f64>::from_request(&req).is_err());
+        assert!(QueryParam::<"custom", i8>::from_request(&req).is_err());
+        assert!(QueryParam::<"custom", i16>::from_request(&req).is_err());
+        assert!(QueryParam::<"custom", i32>::from_request(&req).is_err());
+        assert!(QueryParam::<"custom", i64>::from_request(&req).is_err());
+        assert!(QueryParam::<"custom", i128>::from_request(&req).is_err());
+        assert!(QueryParam::<"custom", isize>::from_request(&req).is_err());
+        assert!(QueryParam::<"custom", u8>::from_request(&req).is_err());
+        assert!(QueryParam::<"custom", u16>::from_request(&req).is_err());
+        assert!(QueryParam::<"custom", u32>::from_request(&req).is_err());
+        assert!(QueryParam::<"custom", u64>::from_request(&req).is_err());
+        assert!(QueryParam::<"custom", u128>::from_request(&req).is_err());
+        assert!(QueryParam::<"custom", usize>::from_request(&req).is_err());
+        assert!(matches!(
+            QueryParam::<"custom", String>::from_request(&req).map(QueryParam::into_inner),
+            Ok(value) if value == "hello"
+        ));
+        assert!(
+            matches!(QueryParam::<"custom", TestCustom>::from_request(&req).map(QueryParam::into_inner), Ok(value) if value.0 == "HELLO")
+        );
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", query_param_parse))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server
+        .get(
+            "/test?bool=true&char=c&int=1729&float=1.618&string=Rust&custom=hello",
+            |req| req,
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_header_parsing() {
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct TestCustom(String);
+
+    impl FromStr for TestCustom {
+        type Err = Infallible;
+
+        fn from_str(s: &str) -> Result<Self, Self::Err> {
+            Ok(Self(s.to_uppercase()))
+        }
+    }
+
+    async fn header_parse(req: Request) -> Response {
+        assert!(matches!(
+            Header::<"bool", bool>::from_request(&req).map(Header::into_inner),
+            Ok(value) if value == vec![true]
+        ));
+        assert!(Header::<"bool", char>::from_request(&req).is_err());
+        assert!(Header::<"bool", f32>::from_request(&req).is_err());
+        assert!(Header::<"bool", f64>::from_request(&req).is_err());
+        assert!(Header::<"bool", i8>::from_request(&req).is_err());
+        assert!(Header::<"bool", i16>::from_request(&req).is_err());
+        assert!(Header::<"bool", i32>::from_request(&req).is_err());
+        assert!(Header::<"bool", i64>::from_request(&req).is_err());
+        assert!(Header::<"bool", i128>::from_request(&req).is_err());
+        assert!(Header::<"bool", isize>::from_request(&req).is_err());
+        assert!(Header::<"bool", u8>::from_request(&req).is_err());
+        assert!(Header::<"bool", u16>::from_request(&req).is_err());
+        assert!(Header::<"bool", u32>::from_request(&req).is_err());
+        assert!(Header::<"bool", u64>::from_request(&req).is_err());
+        assert!(Header::<"bool", u128>::from_request(&req).is_err());
+        assert!(Header::<"bool", usize>::from_request(&req).is_err());
+        assert!(matches!(
+            Header::<"bool", String>::from_request(&req).map(Header::into_inner),
+            Ok(value) if value == vec!["true"]
+        ));
+        assert!(
+            matches!(Header::<"bool", TestCustom>::from_request(&req).map(Header::into_inner), Ok(value) if value == vec![TestCustom("TRUE".to_owned())])
+        );
+
+        assert!(Header::<"char", bool>::from_request(&req).is_err());
+        assert!(matches!(
+            Header::<"char", char>::from_request(&req).map(Header::into_inner),
+            Ok(value) if value == vec!['c']
+        ));
+        assert!(Header::<"char", f32>::from_request(&req).is_err());
+        assert!(Header::<"char", f64>::from_request(&req).is_err());
+        assert!(Header::<"char", i8>::from_request(&req).is_err());
+        assert!(Header::<"char", i16>::from_request(&req).is_err());
+        assert!(Header::<"char", i32>::from_request(&req).is_err());
+        assert!(Header::<"char", i64>::from_request(&req).is_err());
+        assert!(Header::<"char", i128>::from_request(&req).is_err());
+        assert!(Header::<"char", isize>::from_request(&req).is_err());
+        assert!(Header::<"char", u8>::from_request(&req).is_err());
+        assert!(Header::<"char", u16>::from_request(&req).is_err());
+        assert!(Header::<"char", u32>::from_request(&req).is_err());
+        assert!(Header::<"char", u64>::from_request(&req).is_err());
+        assert!(Header::<"char", u128>::from_request(&req).is_err());
+        assert!(Header::<"char", usize>::from_request(&req).is_err());
+        assert!(matches!(
+            Header::<"char", String>::from_request(&req).map(Header::into_inner),
+            Ok(value) if value == vec!["c"]
+        ));
+        assert!(
+            matches!(Header::<"char", TestCustom>::from_request(&req).map(Header::into_inner), Ok(value) if value == vec![TestCustom("C".to_owned())])
+        );
+
+        assert!(Header::<"int", bool>::from_request(&req).is_err());
+        assert!(Header::<"int", char>::from_request(&req).is_err());
+        assert!(matches!(
+            Header::<"int", f32>::from_request(&req).map(Header::into_inner),
+            Ok(value) if value == vec![1729.0]
+        ));
+        assert!(matches!(
+            Header::<"int", f64>::from_request(&req).map(Header::into_inner),
+            Ok(value) if value == vec![1729.0]
+        ));
+        assert!(Header::<"int", i8>::from_request(&req).is_err());
+        assert!(matches!(
+            Header::<"int", i16>::from_request(&req).map(Header::into_inner),
+            Ok(value) if value == vec![1729]
+        ));
+        assert!(matches!(
+            Header::<"int", i32>::from_request(&req).map(Header::into_inner),
+            Ok(value) if value == vec![1729]
+        ));
+        assert!(matches!(
+            Header::<"int", i64>::from_request(&req).map(Header::into_inner),
+            Ok(value) if value == vec![1729]
+        ));
+        assert!(matches!(
+            Header::<"int", i128>::from_request(&req).map(Header::into_inner),
+            Ok(value) if value == vec![1729]
+        ));
+        assert!(matches!(
+            Header::<"int", isize>::from_request(&req).map(Header::into_inner),
+            Ok(value) if value == vec![1729]
+        ));
+        assert!(Header::<"int", u8>::from_request(&req).is_err());
+        assert!(matches!(
+            Header::<"int", u16>::from_request(&req).map(Header::into_inner),
+            Ok(value) if value == vec![1729]
+        ));
+        assert!(matches!(
+            Header::<"int", u32>::from_request(&req).map(Header::into_inner),
+            Ok(value) if value == vec![1729]
+        ));
+        assert!(matches!(
+            Header::<"int", u64>::from_request(&req).map(Header::into_inner),
+            Ok(value) if value == vec![1729]
+        ));
+        assert!(matches!(
+            Header::<"int", u128>::from_request(&req).map(Header::into_inner),
+            Ok(value) if value == vec![1729]
+        ));
+        assert!(matches!(
+            Header::<"int", usize>::from_request(&req).map(Header::into_inner),
+            Ok(value) if value == vec![1729]
+        ));
+        assert!(matches!(
+            Header::<"int", String>::from_request(&req).map(Header::into_inner),
+            Ok(value) if value == vec!["1729".to_owned()]
+        ));
+        assert!(
+            matches!(Header::<"int", TestCustom>::from_request(&req).map(Header::into_inner), Ok(value) if value == vec![TestCustom("1729".to_owned())])
+        );
+
+        assert!(Header::<"float", bool>::from_request(&req).is_err());
+        assert!(Header::<"float", char>::from_request(&req).is_err());
+        assert!(matches!(
+            Header::<"float", f32>::from_request(&req).map(Header::into_inner),
+            Ok(value) if value == vec![1.618]
+        ));
+        assert!(matches!(
+            Header::<"float", f64>::from_request(&req).map(Header::into_inner),
+            Ok(value) if value == vec![1.618]
+        ));
+        assert!(Header::<"float", i8>::from_request(&req).is_err());
+        assert!(Header::<"float", i16>::from_request(&req).is_err());
+        assert!(Header::<"float", i32>::from_request(&req).is_err());
+        assert!(Header::<"float", i64>::from_request(&req).is_err());
+        assert!(Header::<"float", i128>::from_request(&req).is_err());
+        assert!(Header::<"float", isize>::from_request(&req).is_err());
+        assert!(Header::<"float", u8>::from_request(&req).is_err());
+        assert!(Header::<"float", u16>::from_request(&req).is_err());
+        assert!(Header::<"float", u32>::from_request(&req).is_err());
+        assert!(Header::<"float", u64>::from_request(&req).is_err());
+        assert!(Header::<"float", u128>::from_request(&req).is_err());
+        assert!(Header::<"float", usize>::from_request(&req).is_err());
+        assert!(matches!(
+            Header::<"float", String>::from_request(&req).map(Header::into_inner),
+            Ok(value) if value == vec!["1.618".to_owned()]
+        ));
+        assert!(
+            matches!(Header::<"float", TestCustom>::from_request(&req).map(Header::into_inner), Ok(value) if value == vec![TestCustom("1.618".to_owned())])
+        );
+
+        assert!(Header::<"string", bool>::from_request(&req).is_err());
+        assert!(Header::<"string", char>::from_request(&req).is_err());
+        assert!(Header::<"string", f32>::from_request(&req).is_err());
+        assert!(Header::<"string", f64>::from_request(&req).is_err());
+        assert!(Header::<"string", i8>::from_request(&req).is_err());
+        assert!(Header::<"string", i16>::from_request(&req).is_err());
+        assert!(Header::<"string", i32>::from_request(&req).is_err());
+        assert!(Header::<"string", i64>::from_request(&req).is_err());
+        assert!(Header::<"string", i128>::from_request(&req).is_err());
+        assert!(Header::<"string", isize>::from_request(&req).is_err());
+        assert!(Header::<"string", u8>::from_request(&req).is_err());
+        assert!(Header::<"string", u16>::from_request(&req).is_err());
+        assert!(Header::<"string", u32>::from_request(&req).is_err());
+        assert!(Header::<"string", u64>::from_request(&req).is_err());
+        assert!(Header::<"string", u128>::from_request(&req).is_err());
+        assert!(Header::<"string", usize>::from_request(&req).is_err());
+        assert!(matches!(
+            Header::<"string", String>::from_request(&req).map(Header::into_inner),
+            Ok(value) if value == vec!["Rust".to_owned()]
+        ));
+        assert!(
+            matches!(Header::<"string", TestCustom>::from_request(&req).map(Header::into_inner), Ok(value) if value == vec![TestCustom("RUST".to_owned())])
+        );
+
+        assert!(Header::<"custom", bool>::from_request(&req).is_err());
+        assert!(Header::<"custom", char>::from_request(&req).is_err());
+        assert!(Header::<"custom", f32>::from_request(&req).is_err());
+        assert!(Header::<"custom", f64>::from_request(&req).is_err());
+        assert!(Header::<"custom", i8>::from_request(&req).is_err());
+        assert!(Header::<"custom", i16>::from_request(&req).is_err());
+        assert!(Header::<"custom", i32>::from_request(&req).is_err());
+        assert!(Header::<"custom", i64>::from_request(&req).is_err());
+        assert!(Header::<"custom", i128>::from_request(&req).is_err());
+        assert!(Header::<"custom", isize>::from_request(&req).is_err());
+        assert!(Header::<"custom", u8>::from_request(&req).is_err());
+        assert!(Header::<"custom", u16>::from_request(&req).is_err());
+        assert!(Header::<"custom", u32>::from_request(&req).is_err());
+        assert!(Header::<"custom", u64>::from_request(&req).is_err());
+        assert!(Header::<"custom", u128>::from_request(&req).is_err());
+        assert!(Header::<"custom", usize>::from_request(&req).is_err());
+        assert!(matches!(
+            Header::<"custom", String>::from_request(&req).map(Header::into_inner),
+            Ok(value) if value == vec!["hello".to_owned()]
+        ));
+        assert!(
+            matches!(Header::<"custom", TestCustom>::from_request(&req).map(Header::into_inner), Ok(value) if value == vec![TestCustom("HELLO".to_owned())])
+        );
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", header_parse))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server
+        .get("/test", |req| {
+            req.header("bool", "true")
+                .header("char", "c")
+                .header("int", "1729")
+                .header("float", "1.618")
+                .header("string", "Rust")
+                .header("custom", "hello")
+        })
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_cookie_parsing() {
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct TestCustom(String);
+
+    impl FromStr for TestCustom {
+        type Err = Infallible;
+
+        fn from_str(s: &str) -> Result<Self, Self::Err> {
+            Ok(Self(s.to_uppercase()))
+        }
+    }
+
+    async fn cookie_parse(req: Request) -> Response {
+        assert!(matches!(
+            Cookie::<"bool", bool>::from_request(&req).map(Cookie::into_inner),
+            Ok(true)
+        ));
+        assert!(Cookie::<"bool", char>::from_request(&req).is_err());
+        assert!(Cookie::<"bool", f32>::from_request(&req).is_err());
+        assert!(Cookie::<"bool", f64>::from_request(&req).is_err());
+        assert!(Cookie::<"bool", i8>::from_request(&req).is_err());
+        assert!(Cookie::<"bool", i16>::from_request(&req).is_err());
+        assert!(Cookie::<"bool", i32>::from_request(&req).is_err());
+        assert!(Cookie::<"bool", i64>::from_request(&req).is_err());
+        assert!(Cookie::<"bool", i128>::from_request(&req).is_err());
+        assert!(Cookie::<"bool", isize>::from_request(&req).is_err());
+        assert!(Cookie::<"bool", u8>::from_request(&req).is_err());
+        assert!(Cookie::<"bool", u16>::from_request(&req).is_err());
+        assert!(Cookie::<"bool", u32>::from_request(&req).is_err());
+        assert!(Cookie::<"bool", u64>::from_request(&req).is_err());
+        assert!(Cookie::<"bool", u128>::from_request(&req).is_err());
+        assert!(Cookie::<"bool", usize>::from_request(&req).is_err());
+        assert!(matches!(
+            Cookie::<"bool", String>::from_request(&req).map(Cookie::into_inner),
+            Ok(value) if value == "true"
+        ));
+        assert!(
+            matches!(Cookie::<"bool", TestCustom>::from_request(&req).map(Cookie::into_inner), Ok(value) if value.0 == "TRUE")
+        );
+
+        assert!(Cookie::<"char", bool>::from_request(&req).is_err());
+        assert!(matches!(
+            Cookie::<"char", char>::from_request(&req).map(Cookie::into_inner),
+            Ok('c')
+        ));
+        assert!(Cookie::<"char", f32>::from_request(&req).is_err());
+        assert!(Cookie::<"char", f64>::from_request(&req).is_err());
+        assert!(Cookie::<"char", i8>::from_request(&req).is_err());
+        assert!(Cookie::<"char", i16>::from_request(&req).is_err());
+        assert!(Cookie::<"char", i32>::from_request(&req).is_err());
+        assert!(Cookie::<"char", i64>::from_request(&req).is_err());
+        assert!(Cookie::<"char", i128>::from_request(&req).is_err());
+        assert!(Cookie::<"char", isize>::from_request(&req).is_err());
+        assert!(Cookie::<"char", u8>::from_request(&req).is_err());
+        assert!(Cookie::<"char", u16>::from_request(&req).is_err());
+        assert!(Cookie::<"char", u32>::from_request(&req).is_err());
+        assert!(Cookie::<"char", u64>::from_request(&req).is_err());
+        assert!(Cookie::<"char", u128>::from_request(&req).is_err());
+        assert!(Cookie::<"char", usize>::from_request(&req).is_err());
+        assert!(matches!(
+            Cookie::<"char", String>::from_request(&req).map(Cookie::into_inner),
+            Ok(value) if value == "c"
+        ));
+        assert!(
+            matches!(Cookie::<"char", TestCustom>::from_request(&req).map(Cookie::into_inner), Ok(value) if value.0 == "C")
+        );
+
+        assert!(Cookie::<"int", bool>::from_request(&req).is_err());
+        assert!(Cookie::<"int", char>::from_request(&req).is_err());
+        assert!(matches!(
+            Cookie::<"int", f32>::from_request(&req).map(Cookie::into_inner),
+            Ok(1729.0)
+        ));
+        assert!(matches!(
+            Cookie::<"int", f64>::from_request(&req).map(Cookie::into_inner),
+            Ok(1729.0)
+        ));
+        assert!(Cookie::<"int", i8>::from_request(&req).is_err());
+        assert!(matches!(
+            Cookie::<"int", i16>::from_request(&req).map(Cookie::into_inner),
+            Ok(1729)
+        ));
+        assert!(matches!(
+            Cookie::<"int", i32>::from_request(&req).map(Cookie::into_inner),
+            Ok(1729)
+        ));
+        assert!(matches!(
+            Cookie::<"int", i64>::from_request(&req).map(Cookie::into_inner),
+            Ok(1729)
+        ));
+        assert!(matches!(
+            Cookie::<"int", i128>::from_request(&req).map(Cookie::into_inner),
+            Ok(1729)
+        ));
+        assert!(matches!(
+            Cookie::<"int", isize>::from_request(&req).map(Cookie::into_inner),
+            Ok(1729)
+        ));
+        assert!(Cookie::<"int", u8>::from_request(&req).is_err());
+        assert!(matches!(
+            Cookie::<"int", u16>::from_request(&req).map(Cookie::into_inner),
+            Ok(1729)
+        ));
+        assert!(matches!(
+            Cookie::<"int", u32>::from_request(&req).map(Cookie::into_inner),
+            Ok(1729)
+        ));
+        assert!(matches!(
+            Cookie::<"int", u64>::from_request(&req).map(Cookie::into_inner),
+            Ok(1729)
+        ));
+        assert!(matches!(
+            Cookie::<"int", u128>::from_request(&req).map(Cookie::into_inner),
+            Ok(1729)
+        ));
+        assert!(matches!(
+            Cookie::<"int", usize>::from_request(&req).map(Cookie::into_inner),
+            Ok(1729)
+        ));
+        assert!(matches!(
+            Cookie::<"int", String>::from_request(&req).map(Cookie::into_inner),
+            Ok(value) if value == "1729"
+        ));
+        assert!(
+            matches!(Cookie::<"int", TestCustom>::from_request(&req).map(Cookie::into_inner), Ok(value) if value.0 == "1729")
+        );
+
+        assert!(Cookie::<"float", bool>::from_request(&req).is_err());
+        assert!(Cookie::<"float", char>::from_request(&req).is_err());
+        assert!(matches!(
+            Cookie::<"float", f32>::from_request(&req).map(Cookie::into_inner),
+            Ok(1.618)
+        ));
+        assert!(matches!(
+            Cookie::<"float", f64>::from_request(&req).map(Cookie::into_inner),
+            Ok(1.618)
+        ));
+        assert!(Cookie::<"float", i8>::from_request(&req).is_err());
+        assert!(Cookie::<"float", i16>::from_request(&req).is_err());
+        assert!(Cookie::<"float", i32>::from_request(&req).is_err());
+        assert!(Cookie::<"float", i64>::from_request(&req).is_err());
+        assert!(Cookie::<"float", i128>::from_request(&req).is_err());
+        assert!(Cookie::<"float", isize>::from_request(&req).is_err());
+        assert!(Cookie::<"float", u8>::from_request(&req).is_err());
+        assert!(Cookie::<"float", u16>::from_request(&req).is_err());
+        assert!(Cookie::<"float", u32>::from_request(&req).is_err());
+        assert!(Cookie::<"float", u64>::from_request(&req).is_err());
+        assert!(Cookie::<"float", u128>::from_request(&req).is_err());
+        assert!(Cookie::<"float", usize>::from_request(&req).is_err());
+        assert!(matches!(
+            Cookie::<"float", String>::from_request(&req).map(Cookie::into_inner),
+            Ok(value) if value == "1.618"
+        ));
+        assert!(
+            matches!(Cookie::<"float", TestCustom>::from_request(&req).map(Cookie::into_inner), Ok(value) if value.0 == "1.618")
+        );
+
+        assert!(Cookie::<"string", bool>::from_request(&req).is_err());
+        assert!(Cookie::<"string", char>::from_request(&req).is_err());
+        assert!(Cookie::<"string", f32>::from_request(&req).is_err());
+        assert!(Cookie::<"string", f64>::from_request(&req).is_err());
+        assert!(Cookie::<"string", i8>::from_request(&req).is_err());
+        assert!(Cookie::<"string", i16>::from_request(&req).is_err());
+        assert!(Cookie::<"string", i32>::from_request(&req).is_err());
+        assert!(Cookie::<"string", i64>::from_request(&req).is_err());
+        assert!(Cookie::<"string", i128>::from_request(&req).is_err());
+        assert!(Cookie::<"string", isize>::from_request(&req).is_err());
+        assert!(Cookie::<"string", u8>::from_request(&req).is_err());
+        assert!(Cookie::<"string", u16>::from_request(&req).is_err());
+        assert!(Cookie::<"string", u32>::from_request(&req).is_err());
+        assert!(Cookie::<"string", u64>::from_request(&req).is_err());
+        assert!(Cookie::<"string", u128>::from_request(&req).is_err());
+        assert!(Cookie::<"string", usize>::from_request(&req).is_err());
+        assert!(matches!(
+            Cookie::<"string", String>::from_request(&req).map(Cookie::into_inner),
+            Ok(value) if value == "Rust"
+        ));
+        assert!(
+            matches!(Cookie::<"string", TestCustom>::from_request(&req).map(Cookie::into_inner), Ok(value) if value.0 == "RUST")
+        );
+
+        assert!(Cookie::<"custom", bool>::from_request(&req).is_err());
+        assert!(Cookie::<"custom", char>::from_request(&req).is_err());
+        assert!(Cookie::<"custom", f32>::from_request(&req).is_err());
+        assert!(Cookie::<"custom", f64>::from_request(&req).is_err());
+        assert!(Cookie::<"custom", i8>::from_request(&req).is_err());
+        assert!(Cookie::<"custom", i16>::from_request(&req).is_err());
+        assert!(Cookie::<"custom", i32>::from_request(&req).is_err());
+        assert!(Cookie::<"custom", i64>::from_request(&req).is_err());
+        assert!(Cookie::<"custom", i128>::from_request(&req).is_err());
+        assert!(Cookie::<"custom", isize>::from_request(&req).is_err());
+        assert!(Cookie::<"custom", u8>::from_request(&req).is_err());
+        assert!(Cookie::<"custom", u16>::from_request(&req).is_err());
+        assert!(Cookie::<"custom", u32>::from_request(&req).is_err());
+        assert!(Cookie::<"custom", u64>::from_request(&req).is_err());
+        assert!(Cookie::<"custom", u128>::from_request(&req).is_err());
+        assert!(Cookie::<"custom", usize>::from_request(&req).is_err());
+        assert!(matches!(
+            Cookie::<"custom", String>::from_request(&req).map(Cookie::into_inner),
+            Ok(value) if value == "hello"
+        ));
+        assert!(
+            matches!(Cookie::<"custom", TestCustom>::from_request(&req).map(Cookie::into_inner), Ok(value) if value.0 == "HELLO")
+        );
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", cookie_parse))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server
+        .get("/test", |req| {
+            req.header(
+                hyper::header::COOKIE,
+                "bool=true; char=c; int=1729; float=1.618; string=Rust; custom=hello",
+            )
+        })
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
 }

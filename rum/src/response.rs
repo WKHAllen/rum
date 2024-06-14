@@ -239,12 +239,6 @@ impl IntoResponse for Response {
     }
 }
 
-impl IntoResponse for () {
-    fn into_response(self) -> Response {
-        Response::new()
-    }
-}
-
 impl IntoResponse for &str {
     fn into_response(self) -> Response {
         Response::new()
@@ -300,37 +294,23 @@ where
     }
 }
 
-impl<T> IntoResponse for (T,)
-where
-    T: IntoResponse,
-{
-    fn into_response(self) -> Response {
-        self.0.into_response()
-    }
-}
-
-/// Implements `IntoResponse` for as many tuples as specified.
+/// Implements `IntoResponse` for the given tuple type.
 macro_rules! impl_into_response_tuples {
-    ( $_:ty ) => {};
-
-    ( $first:ident $( $rest:ident )+ ) => {
-        impl_into_response_tuples! { $( $rest )+ }
-
-        impl< $first, $( $rest ),+ > IntoResponse for ( $first, $( $rest, )+ )
+    ( $( $ty:ident ),* $(,)? ) => {
+        impl< $( $ty ),* > IntoResponse for ( $( $ty, )* )
         where
-            $first: IntoResponse,
-            $( $rest: IntoResponse, )+
+            $( $ty: IntoResponse, )*
         {
             fn into_response(self) -> Response {
-                #[allow(non_snake_case)]
-                let ( $first, $( $rest ),+ ) = self;
-                $first.into_response()
+                #[allow(non_snake_case, unused_parens)]
+                let ( $( $ty ),* ) = self;
+                Response::new()
                 $(
-                    .and( $rest )
-                )+
+                    .and( $ty )
+                )*
             }
         }
     };
 }
 
-impl_into_response_tuples! { A B C D E F G H I J K L }
+all_the_tuples!(impl_into_response_tuples);

@@ -14,6 +14,8 @@ pub mod body;
 pub mod cookie;
 pub mod error;
 pub mod header;
+#[macro_use]
+pub(crate) mod macros;
 pub mod middleware;
 pub mod path;
 pub mod query;
@@ -22,7 +24,7 @@ pub mod response;
 pub mod routing;
 pub mod server;
 pub mod state;
-mod typemap;
+pub(crate) mod typemap;
 
 /// General HTTP-related types.
 pub mod http {
@@ -49,7 +51,7 @@ pub mod prelude {
     pub use crate::query::{QueryParamMap, QueryParams};
     pub use crate::request::{FromRequest, Request};
     pub use crate::response::{IntoResponse, Response};
-    pub use crate::routing::{RouteGroup, RoutePath, RoutePathMatched};
+    pub use crate::routing::{RouteGroup, RoutePath, RoutePathMatched, RoutePathString};
     pub use crate::server::{
         error_report_stream, shutdown_signal, ErrorReceiver, ErrorSender, Server, ShutdownReceiver,
         ShutdownSender,
