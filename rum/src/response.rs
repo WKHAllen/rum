@@ -303,7 +303,7 @@ macro_rules! impl_into_response_tuples {
         {
             fn into_response(self) -> Response {
                 #[allow(non_snake_case, unused_parens)]
-                let ( $( $ty ),* ) = self;
+                let ( $( $ty, )* ) = self;
                 Response::new()
                 $(
                     .and( $ty )

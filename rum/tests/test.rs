@@ -3512,7 +3512,7 @@ async fn test_response_from_tuple() {
     }
 
     async fn response_from_tuple1(_: Request) -> Response {
-        ("1").into_response()
+        ("1",).into_response()
     }
 
     async fn response_from_tuple2(_: Request) -> Response {
