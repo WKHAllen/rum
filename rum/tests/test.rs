@@ -120,6 +120,21 @@ impl TestServerHandle {
         self.query_as(Method::GET, path, config_fn).await
     }
 
+    pub async fn head<F>(&self, path: &str, config_fn: F) -> reqwest::Result<reqwest::Response>
+    where
+        F: FnOnce(reqwest::RequestBuilder) -> reqwest::RequestBuilder,
+    {
+        self.query(Method::HEAD, path, config_fn).await
+    }
+
+    pub async fn head_as<T, F>(&self, path: &str, config_fn: F) -> reqwest::Result<T>
+    where
+        T: DeserializeOwned,
+        F: FnOnce(reqwest::RequestBuilder) -> reqwest::RequestBuilder,
+    {
+        self.query_as(Method::HEAD, path, config_fn).await
+    }
+
     pub async fn post<F>(&self, path: &str, config_fn: F) -> reqwest::Result<reqwest::Response>
     where
         F: FnOnce(reqwest::RequestBuilder) -> reqwest::RequestBuilder,
@@ -150,21 +165,6 @@ impl TestServerHandle {
         self.query_as(Method::PUT, path, config_fn).await
     }
 
-    pub async fn patch<F>(&self, path: &str, config_fn: F) -> reqwest::Result<reqwest::Response>
-    where
-        F: FnOnce(reqwest::RequestBuilder) -> reqwest::RequestBuilder,
-    {
-        self.query(Method::PATCH, path, config_fn).await
-    }
-
-    pub async fn patch_as<T, F>(&self, path: &str, config_fn: F) -> reqwest::Result<T>
-    where
-        T: DeserializeOwned,
-        F: FnOnce(reqwest::RequestBuilder) -> reqwest::RequestBuilder,
-    {
-        self.query_as(Method::PATCH, path, config_fn).await
-    }
-
     pub async fn delete<F>(&self, path: &str, config_fn: F) -> reqwest::Result<reqwest::Response>
     where
         F: FnOnce(reqwest::RequestBuilder) -> reqwest::RequestBuilder,
@@ -178,6 +178,66 @@ impl TestServerHandle {
         F: FnOnce(reqwest::RequestBuilder) -> reqwest::RequestBuilder,
     {
         self.query_as(Method::DELETE, path, config_fn).await
+    }
+
+    pub async fn connect<F>(&self, path: &str, config_fn: F) -> reqwest::Result<reqwest::Response>
+    where
+        F: FnOnce(reqwest::RequestBuilder) -> reqwest::RequestBuilder,
+    {
+        self.query(Method::CONNECT, path, config_fn).await
+    }
+
+    pub async fn connect_as<T, F>(&self, path: &str, config_fn: F) -> reqwest::Result<T>
+    where
+        T: DeserializeOwned,
+        F: FnOnce(reqwest::RequestBuilder) -> reqwest::RequestBuilder,
+    {
+        self.query_as(Method::CONNECT, path, config_fn).await
+    }
+
+    pub async fn options<F>(&self, path: &str, config_fn: F) -> reqwest::Result<reqwest::Response>
+    where
+        F: FnOnce(reqwest::RequestBuilder) -> reqwest::RequestBuilder,
+    {
+        self.query(Method::OPTIONS, path, config_fn).await
+    }
+
+    pub async fn options_as<T, F>(&self, path: &str, config_fn: F) -> reqwest::Result<T>
+    where
+        T: DeserializeOwned,
+        F: FnOnce(reqwest::RequestBuilder) -> reqwest::RequestBuilder,
+    {
+        self.query_as(Method::OPTIONS, path, config_fn).await
+    }
+
+    pub async fn trace<F>(&self, path: &str, config_fn: F) -> reqwest::Result<reqwest::Response>
+    where
+        F: FnOnce(reqwest::RequestBuilder) -> reqwest::RequestBuilder,
+    {
+        self.query(Method::TRACE, path, config_fn).await
+    }
+
+    pub async fn trace_as<T, F>(&self, path: &str, config_fn: F) -> reqwest::Result<T>
+    where
+        T: DeserializeOwned,
+        F: FnOnce(reqwest::RequestBuilder) -> reqwest::RequestBuilder,
+    {
+        self.query_as(Method::TRACE, path, config_fn).await
+    }
+
+    pub async fn patch<F>(&self, path: &str, config_fn: F) -> reqwest::Result<reqwest::Response>
+    where
+        F: FnOnce(reqwest::RequestBuilder) -> reqwest::RequestBuilder,
+    {
+        self.query(Method::PATCH, path, config_fn).await
+    }
+
+    pub async fn patch_as<T, F>(&self, path: &str, config_fn: F) -> reqwest::Result<T>
+    where
+        T: DeserializeOwned,
+        F: FnOnce(reqwest::RequestBuilder) -> reqwest::RequestBuilder,
+    {
+        self.query_as(Method::PATCH, path, config_fn).await
     }
 
     pub async fn stop(mut self) -> Vec<Arc<Error>> {
@@ -3567,6 +3627,110 @@ async fn test_response_from_tuple() {
         assert_eq!(res.status(), StatusCode::OK);
         assert_eq!(res.text().await.unwrap(), i.to_string());
     }
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_http_methods() {
+    #[handler]
+    async fn handler_get() -> &'static str {
+        "Hello, GET method!"
+    }
+
+    #[handler]
+    async fn handler_head() -> StatusCode {
+        StatusCode::IM_A_TEAPOT
+    }
+
+    #[handler]
+    async fn handler_post() -> &'static str {
+        "Hello, POST method!"
+    }
+
+    #[handler]
+    async fn handler_put() -> &'static str {
+        "Hello, PUT method!"
+    }
+
+    #[handler]
+    async fn handler_delete() -> &'static str {
+        "Hello, DELETE method!"
+    }
+
+    #[handler]
+    async fn handler_connect() -> &'static str {
+        "Hello, CONNECT method!"
+    }
+
+    #[handler]
+    async fn handler_options() -> &'static str {
+        "Hello, OPTIONS method!"
+    }
+
+    #[handler]
+    async fn handler_trace() -> &'static str {
+        "Hello, TRACE method!"
+    }
+
+    #[handler]
+    async fn handler_patch() -> &'static str {
+        "Hello, PATCH method!"
+    }
+
+    let server = TestServer::new()
+        .config(|server| {
+            server
+                .get("/test", handler_get)
+                .head("/test", handler_head)
+                .post("/test", handler_post)
+                .put("/test", handler_put)
+                .delete("/test", handler_delete)
+                .connect("/test", handler_connect)
+                .options("/test", handler_options)
+                .trace("/test", handler_trace)
+                .patch("/test", handler_patch)
+        })
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "Hello, GET method!");
+
+    let res = server.head("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::IM_A_TEAPOT);
+
+    let res = server.post("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "Hello, POST method!");
+
+    let res = server.put("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "Hello, PUT method!");
+
+    let res = server.delete("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "Hello, DELETE method!");
+
+    // CONNECT is not easily testable
+    // let res = server.connect("/test", |req| req).await.unwrap();
+    // assert_eq!(res.status(), StatusCode::OK);
+    // assert_eq!(res.text().await.unwrap(), "Hello, CONNECT method!");
+
+    let res = server.options("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "Hello, OPTIONS method!");
+
+    let res = server.trace("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "Hello, TRACE method!");
+
+    let res = server.patch("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "Hello, PATCH method!");
 
     let errors = server.stop().await;
     assert_no_server_errors!(errors);
