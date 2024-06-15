@@ -1,4 +1,4 @@
-use rum::error::Error;
+use rum::error::{Error, Result};
 use rum::prelude::*;
 use rum::routing::{RoutePathMatchedSegment, RoutePathSegment};
 use serde::de::DeserializeOwned;
@@ -2112,7 +2112,7 @@ async fn test_path_param_parsing() {
     impl FromStr for TestCustom {
         type Err = Infallible;
 
-        fn from_str(s: &str) -> Result<Self, Self::Err> {
+        fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
             Ok(Self(s.to_uppercase()))
         }
     }
@@ -2342,7 +2342,7 @@ async fn test_query_param_parsing() {
     impl FromStr for TestCustom {
         type Err = Infallible;
 
-        fn from_str(s: &str) -> Result<Self, Self::Err> {
+        fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
             Ok(Self(s.to_uppercase()))
         }
     }
@@ -2570,7 +2570,7 @@ async fn test_header_parsing() {
     impl FromStr for TestCustom {
         type Err = Infallible;
 
-        fn from_str(s: &str) -> Result<Self, Self::Err> {
+        fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
             Ok(Self(s.to_uppercase()))
         }
     }
@@ -2802,7 +2802,7 @@ async fn test_cookie_parsing() {
     impl FromStr for TestCustom {
         type Err = Infallible;
 
-        fn from_str(s: &str) -> Result<Self, Self::Err> {
+        fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
             Ok(Self(s.to_uppercase()))
         }
     }
@@ -3274,6 +3274,299 @@ async fn test_response_and() {
     assert_eq!(res.status(), StatusCode::IM_A_TEAPOT);
     assert_eq!(res.headers().get("Test-Header").unwrap(), ": )");
     assert_eq!(res.text().await.unwrap(), "by this one");
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_response_from_response() {
+    async fn response_from_response(_: Request) -> Response {
+        Response::new()
+            .status_code(StatusCode::IM_A_TEAPOT)
+            .into_response()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", response_from_response))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::IM_A_TEAPOT);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_response_from_str() {
+    async fn response_from_str(_: Request) -> Response {
+        "Hello, response str!".into_response()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", response_from_str))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "Hello, response str!");
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_response_from_string() {
+    async fn response_from_string(_: Request) -> Response {
+        "Hello, response string!".to_owned().into_response()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", response_from_string))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "Hello, response string!");
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_response_from_string_ref() {
+    async fn response_from_string_ref(_: Request) -> Response {
+        (&("Hello, response string ref!".to_owned())).into_response()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", response_from_string_ref))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "Hello, response string ref!");
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_response_from_body_string() {
+    async fn response_from_body_string(_: Request) -> Response {
+        BodyString("Hello, response body string!".to_owned()).into_response()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", response_from_body_string))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "Hello, response body string!");
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_response_from_json() {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    struct TestJson {
+        num: i32,
+    }
+
+    async fn response_from_json(_: Request) -> Response {
+        Json(TestJson { num: 123 }).into_response()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", response_from_json))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.json::<TestJson>().await.unwrap(), TestJson { num: 123 });
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_response_from_result_ok() {
+    async fn response_from_result_ok(_: Request) -> Response {
+        Result::Ok("Hello, response result!").into_response()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", response_from_result_ok))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "Hello, response result!");
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_response_from_result_err() {
+    async fn response_from_result_err(_: Request) -> Response {
+        Result::<()>::Err(Error::UnsupportedMediaType).into_response()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", response_from_result_err))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    assert_eq!(res.text().await.unwrap(), "{\"error\":\"the request body content does not match the `Content-Type` header, or the header is not present\"}");
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_response_from_tuple() {
+    async fn response_from_tuple0(_: Request) -> Response {
+        ().into_response()
+    }
+
+    async fn response_from_tuple1(_: Request) -> Response {
+        ("1").into_response()
+    }
+
+    async fn response_from_tuple2(_: Request) -> Response {
+        ("1", "2").into_response()
+    }
+
+    async fn response_from_tuple3(_: Request) -> Response {
+        ("1", "2", "3").into_response()
+    }
+
+    async fn response_from_tuple4(_: Request) -> Response {
+        ("1", "2", "3", "4").into_response()
+    }
+
+    async fn response_from_tuple5(_: Request) -> Response {
+        ("1", "2", "3", "4", "5").into_response()
+    }
+
+    async fn response_from_tuple6(_: Request) -> Response {
+        ("1", "2", "3", "4", "5", "6").into_response()
+    }
+
+    async fn response_from_tuple7(_: Request) -> Response {
+        ("1", "2", "3", "4", "5", "6", "7").into_response()
+    }
+
+    async fn response_from_tuple8(_: Request) -> Response {
+        ("1", "2", "3", "4", "5", "6", "7", "8").into_response()
+    }
+
+    async fn response_from_tuple9(_: Request) -> Response {
+        ("1", "2", "3", "4", "5", "6", "7", "8", "9").into_response()
+    }
+
+    async fn response_from_tuple10(_: Request) -> Response {
+        ("1", "2", "3", "4", "5", "6", "7", "8", "9", "10").into_response()
+    }
+
+    async fn response_from_tuple11(_: Request) -> Response {
+        ("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11").into_response()
+    }
+
+    async fn response_from_tuple12(_: Request) -> Response {
+        (
+            "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12",
+        )
+            .into_response()
+    }
+
+    async fn response_from_tuple13(_: Request) -> Response {
+        (
+            "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13",
+        )
+            .into_response()
+    }
+
+    async fn response_from_tuple14(_: Request) -> Response {
+        (
+            "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14",
+        )
+            .into_response()
+    }
+
+    async fn response_from_tuple15(_: Request) -> Response {
+        (
+            "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15",
+        )
+            .into_response()
+    }
+
+    async fn response_from_tuple16(_: Request) -> Response {
+        (
+            "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16",
+        )
+            .into_response()
+    }
+
+    let server = TestServer::new()
+        .config(|server| {
+            server
+                .get("/test/0", response_from_tuple0)
+                .get("/test/1", response_from_tuple1)
+                .get("/test/2", response_from_tuple2)
+                .get("/test/3", response_from_tuple3)
+                .get("/test/4", response_from_tuple4)
+                .get("/test/5", response_from_tuple5)
+                .get("/test/6", response_from_tuple6)
+                .get("/test/7", response_from_tuple7)
+                .get("/test/8", response_from_tuple8)
+                .get("/test/9", response_from_tuple9)
+                .get("/test/10", response_from_tuple10)
+                .get("/test/11", response_from_tuple11)
+                .get("/test/12", response_from_tuple12)
+                .get("/test/13", response_from_tuple13)
+                .get("/test/14", response_from_tuple14)
+                .get("/test/15", response_from_tuple15)
+                .get("/test/16", response_from_tuple16)
+        })
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test/0", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert!(res.text().await.unwrap().is_empty());
+
+    for i in 1..=16 {
+        let res = server
+            .get(&format!("/test/{}", i), |req| req)
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(res.text().await.unwrap(), i.to_string());
+    }
 
     let errors = server.stop().await;
     assert_no_server_errors!(errors);
