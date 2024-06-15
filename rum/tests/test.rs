@@ -7,6 +7,7 @@ use std::convert::Infallible;
 use std::io;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::spawn;
 use tokio::task::JoinHandle;
@@ -3018,6 +3019,261 @@ async fn test_cookie_parsing() {
         .await
         .unwrap();
     assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_repeated_header() {
+    #[handler]
+    async fn repeated_header(headers: HeaderMap) {
+        let test_header = headers.get("Test-Header").unwrap();
+        assert_eq!(test_header, &["foo", "bar", "baz"]);
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", repeated_header))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server
+        .get("/test", |req| {
+            req.header("Test-Header", "foo")
+                .header("Test-Header", "bar")
+                .header("Test-Header", "baz")
+        })
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_response_new() {
+    #[handler]
+    async fn response_new() -> Response {
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", response_new))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert!(res.bytes().await.unwrap().is_empty());
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_response_new_error() {
+    #[handler]
+    async fn response_new_error() -> Response {
+        Response::new_error(Error::UnsupportedMediaType)
+            .status_code(StatusCode::IM_A_TEAPOT)
+            .body("This body will not be set")
+            .header("Test-Header", "This header will also not be set")
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", response_new_error))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    assert!(res.headers().get("Test-Header").is_none());
+    assert_eq!(res.text().await.unwrap(), "{\"error\":\"the request body content does not match the `Content-Type` header, or the header is not present\"}");
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_response_status_code() {
+    #[handler]
+    async fn response_status_code() -> Response {
+        Response::new()
+            .status_code(StatusCode::SEE_OTHER)
+            .status_code(StatusCode::UNPROCESSABLE_ENTITY)
+            .status_code(StatusCode::IM_A_TEAPOT)
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", response_status_code))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::IM_A_TEAPOT);
+    assert!(res.bytes().await.unwrap().is_empty());
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_response_body() {
+    #[handler]
+    async fn response_body() -> Response {
+        Response::new().body("Hello, response body!")
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", response_body))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "Hello, response body!");
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_response_body_or() {
+    #[handler]
+    async fn response_body_or() -> Response {
+        Response::new()
+            .body_or("first body")
+            .body_or("second body")
+            .body_or("third body")
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", response_body_or))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "first body");
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_response_body_json() {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    struct TestJson {
+        num: i32,
+    }
+
+    #[handler]
+    async fn response_body_json() -> Response {
+        Response::new().body_json(TestJson { num: 123 })
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", response_body_json))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.json::<TestJson>().await.unwrap(), TestJson { num: 123 });
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_response_header() {
+    #[handler]
+    async fn response_header() -> Response {
+        Response::new().header("Test-Header", "Hello, response header!")
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", response_header))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(
+        res.headers().get("Test-Header").unwrap(),
+        "Hello, response header!"
+    );
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_response_cookie() {
+    #[handler]
+    async fn response_cookie() -> Response {
+        Response::new()
+            .cookie(SetCookie::new("test_cookie_1", "Hello, response cookie!").http_only(true))
+            .cookie(
+                SetCookie::new("test_cookie_2", "Goodbye, response cookie!")
+                    .expire_after(Duration::from_secs(35792)),
+            )
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", response_cookie))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(
+        res.headers()
+            .get_all(hyper::header::SET_COOKIE)
+            .into_iter()
+            .collect::<Vec<_>>(),
+        &[
+            "test_cookie_1=Hello, response cookie!; HttpOnly",
+            "test_cookie_2=Goodbye, response cookie!; Max-Age=35792"
+        ]
+    );
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_response_and() {
+    #[handler]
+    async fn response_and() -> Response {
+        Response::new()
+            .and(StatusCode::NOT_IMPLEMENTED)
+            .and(StatusCode::IM_A_TEAPOT)
+            .and("This body will be overridden")
+            .and("by this one")
+            .and(Response::new().header("Test-Header", ": )"))
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", response_and))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::IM_A_TEAPOT);
+    assert_eq!(res.headers().get("Test-Header").unwrap(), ": )");
+    assert_eq!(res.text().await.unwrap(), "by this one");
 
     let errors = server.stop().await;
     assert_no_server_errors!(errors);
