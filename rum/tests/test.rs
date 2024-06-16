@@ -3735,3 +3735,170 @@ async fn test_http_methods() {
     let errors = server.stop().await;
     assert_no_server_errors!(errors);
 }
+
+#[tokio::test]
+async fn test_middleware() {
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct Token(String);
+
+    impl FromStr for Token {
+        type Err = Infallible;
+
+        fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+            Ok(Self(s.to_owned()))
+        }
+    }
+
+    #[middleware]
+    async fn auth(req: Request, next: NextFn, token: CookieOptional<"token", Token>) -> Response {
+        match &*token {
+            Some(token) => {
+                if token.0.as_str() == "0123456789ABCDEF" {
+                    next.call(req).await
+                } else {
+                    Response::new().status_code(StatusCode::FORBIDDEN)
+                }
+            }
+            None => Response::new().status_code(StatusCode::UNAUTHORIZED),
+        }
+    }
+
+    #[handler]
+    async fn secret() -> &'static str {
+        "35792"
+    }
+
+    let server = TestServer::new()
+        .config(|server| {
+            server.route_group(
+                RouteGroup::new("/admin")
+                    .with_middleware(auth)
+                    .get("/secret", secret),
+            )
+        })
+        .start()
+        .await
+        .unwrap();
+
+    let res = server
+        .get("/admin/secret", |req| {
+            req.header(hyper::header::COOKIE, "token=0123456789ABCDEF")
+        })
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "35792");
+
+    let res = server.get("/admin/secret", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+
+    let res = server
+        .get("/admin/secret", |req| {
+            req.header(hyper::header::COOKIE, "token=invalid")
+        })
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::FORBIDDEN);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_middleware_mutate_response() {
+    #[middleware]
+    async fn test_header_middleware(req: Request, next: NextFn) -> Response {
+        next.call(req).await.header("Test-Header", "35792")
+    }
+
+    #[handler]
+    async fn empty_handler() {}
+
+    let server = TestServer::new()
+        .config(|server| {
+            server
+                .with_middleware(test_header_middleware)
+                .get("/test", empty_handler)
+        })
+        .start()
+        .await
+        .unwrap();
+
+    let res = server
+        .get("/test", |req| {
+            req.header(hyper::header::COOKIE, "token=0123456789ABCDEF")
+        })
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.headers().get("Test-Header").unwrap(), "35792");
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_middleware_prevent_handler() {
+    #[middleware]
+    async fn stop_middleware() -> Response {
+        Response::new().status_code(StatusCode::NO_CONTENT)
+    }
+
+    #[handler]
+    async fn unused_handler() -> &'static str {
+        "this should not be included in the response"
+    }
+
+    let server = TestServer::new()
+        .config(|server| {
+            server
+                .with_middleware(stop_middleware)
+                .get("/test", unused_handler)
+        })
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::NO_CONTENT);
+    assert!(res.text().await.unwrap().is_empty());
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_middleware_prevent_middleware() {
+    #[middleware]
+    async fn middleware1() -> Response {
+        Response::new().status_code(StatusCode::NO_CONTENT)
+    }
+
+    #[middleware]
+    async fn middleware2() -> Response {
+        Response::new().status_code(StatusCode::IM_A_TEAPOT)
+    }
+
+    #[handler]
+    async fn unused_handler() -> &'static str {
+        "this should not be included in the response"
+    }
+
+    let server = TestServer::new()
+        .config(|server| {
+            server
+                .with_middleware(middleware1)
+                .with_middleware(middleware2)
+                .get("/test", unused_handler)
+        })
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::NO_CONTENT);
+    assert!(res.text().await.unwrap().is_empty());
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
