@@ -3902,3 +3902,207 @@ async fn test_middleware_prevent_middleware() {
     let errors = server.stop().await;
     assert_no_server_errors!(errors);
 }
+
+#[tokio::test]
+async fn test_middleware_multiple_layers() {
+    #[middleware]
+    async fn middleware1(
+        req: Request,
+        next: NextFn,
+        do_next: QueryParamOptional<"mid1">,
+    ) -> Response {
+        if do_next.is_none() {
+            next(req).await
+        } else {
+            Response::new().body("response from mid1")
+        }
+    }
+
+    #[middleware]
+    async fn middleware2(
+        req: Request,
+        next: NextFn,
+        do_next: QueryParamOptional<"mid2">,
+    ) -> Response {
+        if do_next.is_none() {
+            next(req).await
+        } else {
+            Response::new().body("response from mid2")
+        }
+    }
+
+    #[middleware]
+    async fn middleware3(
+        req: Request,
+        next: NextFn,
+        do_next: QueryParamOptional<"mid3">,
+    ) -> Response {
+        if do_next.is_none() {
+            next(req).await
+        } else {
+            Response::new().body("response from mid3")
+        }
+    }
+
+    #[handler]
+    async fn final_handler() -> &'static str {
+        "response from handler"
+    }
+
+    let server = TestServer::new()
+        .config(|server| {
+            server
+                .with_middleware(middleware1)
+                .with_middleware(middleware2)
+                .with_middleware(middleware3)
+                .get("/test", final_handler)
+        })
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test?mid1=", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "response from mid1");
+
+    let res = server.get("/test?mid2=", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "response from mid2");
+
+    let res = server.get("/test?mid3=", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "response from mid3");
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "response from handler");
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_middleware_order() {
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct TestOrder(Vec<usize>);
+
+    #[middleware]
+    async fn middleware1(req: Request, next: NextFn, local_state: LocalState) -> Response {
+        local_state
+            .with(|local_state| match local_state.get_mut::<TestOrder>() {
+                Some(order) => {
+                    order.0.push(1);
+                }
+                None => {
+                    local_state.insert(TestOrder(vec![1]));
+                }
+            })
+            .await;
+        next(req).await.header("Pop-Order", "1")
+    }
+
+    #[middleware]
+    async fn middleware2(req: Request, next: NextFn, local_state: LocalState) -> Response {
+        local_state
+            .with(|local_state| match local_state.get_mut::<TestOrder>() {
+                Some(order) => {
+                    order.0.push(2);
+                }
+                None => {
+                    local_state.insert(TestOrder(vec![2]));
+                }
+            })
+            .await;
+        next(req).await.header("Pop-Order", "2")
+    }
+
+    #[middleware]
+    async fn middleware3(req: Request, next: NextFn, local_state: LocalState) -> Response {
+        local_state
+            .with(|local_state| match local_state.get_mut::<TestOrder>() {
+                Some(order) => {
+                    order.0.push(3);
+                }
+                None => {
+                    local_state.insert(TestOrder(vec![3]));
+                }
+            })
+            .await;
+        next(req).await.header("Pop-Order", "3")
+    }
+
+    #[middleware]
+    async fn middleware4(req: Request, next: NextFn, local_state: LocalState) -> Response {
+        local_state
+            .with(|local_state| match local_state.get_mut::<TestOrder>() {
+                Some(order) => {
+                    order.0.push(4);
+                }
+                None => {
+                    local_state.insert(TestOrder(vec![4]));
+                }
+            })
+            .await;
+        next(req).await.header("Pop-Order", "4")
+    }
+
+    #[middleware]
+    async fn middleware5(req: Request, next: NextFn, local_state: LocalState) -> Response {
+        local_state
+            .with(|local_state| match local_state.get_mut::<TestOrder>() {
+                Some(order) => {
+                    order.0.push(5);
+                }
+                None => {
+                    local_state.insert(TestOrder(vec![5]));
+                }
+            })
+            .await;
+        next(req).await.header("Pop-Order", "5")
+    }
+
+    #[handler]
+    async fn final_handler(local_state: LocalState) -> Response {
+        let order = local_state
+            .with(|local_state| local_state.remove::<TestOrder>())
+            .await
+            .unwrap();
+        order.0.into_iter().fold(Response::new(), |res, value| {
+            res.header("Push-Order", &value.to_string())
+        })
+    }
+
+    let server = TestServer::new()
+        .config(|server| {
+            server
+                .with_middleware(middleware1)
+                .with_middleware(middleware2)
+                .with_middleware(middleware3)
+                .with_middleware(middleware4)
+                .with_middleware(middleware5)
+                .get("/test", final_handler)
+        })
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(
+        res.headers()
+            .get_all("Push-Order")
+            .into_iter()
+            .collect::<Vec<_>>(),
+        vec!["1", "2", "3", "4", "5"]
+    );
+    assert_eq!(
+        res.headers()
+            .get_all("Pop-Order")
+            .into_iter()
+            .collect::<Vec<_>>(),
+        vec!["5", "4", "3", "2", "1"]
+    );
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
