@@ -4106,3 +4106,203 @@ async fn test_middleware_order() {
     let errors = server.stop().await;
     assert_no_server_errors!(errors);
 }
+
+#[tokio::test]
+async fn test_local_middleware() {
+    #[middleware]
+    async fn local_middleware(req: Request, next: NextFn) -> Response {
+        next(req).await.header("Local-Middleware", "1")
+    }
+
+    #[middleware]
+    async fn recursive_middleware(req: Request, next: NextFn) -> Response {
+        next(req).await.header("Recursive-Middleware", "1")
+    }
+
+    #[handler]
+    async fn parent_handler() -> &'static str {
+        "parent"
+    }
+
+    #[handler]
+    async fn child_handler() -> &'static str {
+        "child"
+    }
+
+    let server = TestServer::new()
+        .config(|server| {
+            server.route_group(
+                RouteGroup::new("/test")
+                    .with_local_middleware(local_middleware)
+                    .with_middleware(recursive_middleware)
+                    .get("/", parent_handler)
+                    .route_group(RouteGroup::new("/child").get("/", child_handler)),
+            )
+        })
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.headers().get("Local-Middleware").unwrap(), "1");
+    assert_eq!(res.headers().get("Recursive-Middleware").unwrap(), "1");
+    assert_eq!(res.text().await.unwrap(), "parent");
+
+    let res = server.get("/test/child", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.headers().get("Local-Middleware"), None);
+    assert_eq!(res.headers().get("Recursive-Middleware").unwrap(), "1");
+    assert_eq!(res.text().await.unwrap(), "child");
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_local_middleware_order() {
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct TestOrder(Vec<&'static str>);
+
+    #[middleware]
+    async fn local_middleware(req: Request, next: NextFn, local_state: LocalState) -> Response {
+        local_state
+            .with(|local_state| match local_state.get_mut::<TestOrder>() {
+                Some(order) => {
+                    order.0.push("local");
+                }
+                None => {
+                    local_state.insert(TestOrder(vec!["local"]));
+                }
+            })
+            .await;
+        next(req).await.header("Pop-Order", "local")
+    }
+
+    #[middleware]
+    async fn recursive_middleware(req: Request, next: NextFn, local_state: LocalState) -> Response {
+        local_state
+            .with(|local_state| match local_state.get_mut::<TestOrder>() {
+                Some(order) => {
+                    order.0.push("recursive");
+                }
+                None => {
+                    local_state.insert(TestOrder(vec!["recursive"]));
+                }
+            })
+            .await;
+        next(req).await.header("Pop-Order", "recursive")
+    }
+
+    #[handler]
+    async fn final_handler(local_state: LocalState) -> Response {
+        let order = local_state
+            .with(|local_state| local_state.remove::<TestOrder>())
+            .await
+            .unwrap();
+        order.0.into_iter().fold(Response::new(), |res, value| {
+            res.header("Push-Order", value)
+        })
+    }
+
+    let server = TestServer::new()
+        .config(|server| {
+            server.route_group(
+                RouteGroup::new("/")
+                    .with_middleware(recursive_middleware)
+                    .route_group(
+                        RouteGroup::new("/test")
+                            .with_local_middleware(local_middleware)
+                            .get("/", final_handler),
+                    ),
+            )
+        })
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(
+        res.headers()
+            .get_all("Push-Order")
+            .into_iter()
+            .collect::<Vec<_>>(),
+        vec!["recursive", "local"]
+    );
+    assert_eq!(
+        res.headers()
+            .get_all("Pop-Order")
+            .into_iter()
+            .collect::<Vec<_>>(),
+        vec!["local", "recursive"]
+    );
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_adjacent_route_groups() {
+    #[middleware]
+    async fn local_parent_middleware(req: Request, next: NextFn) -> Response {
+        next(req).await.header("Parent-Local", "1")
+    }
+
+    #[middleware]
+    async fn recursive_parent_middleware(req: Request, next: NextFn) -> Response {
+        next(req).await.header("Parent-Recursive", "1")
+    }
+
+    #[middleware]
+    async fn child_middleware1(req: Request, next: NextFn) -> Response {
+        next(req).await.header("Child-1", "1")
+    }
+
+    #[middleware]
+    async fn child_middleware2(req: Request, next: NextFn) -> Response {
+        next(req).await.header("Child-2", "1")
+    }
+
+    #[handler]
+    async fn final_handler() {}
+
+    let server = TestServer::new()
+        .config(|server| {
+            server.route_group(
+                RouteGroup::new("/test")
+                    .with_local_middleware(local_parent_middleware)
+                    .with_middleware(recursive_parent_middleware)
+                    .route_group(
+                        RouteGroup::new("/")
+                            .with_middleware(child_middleware1)
+                            .get("/", final_handler),
+                    )
+                    .route_group(
+                        RouteGroup::new("/")
+                            .with_middleware(child_middleware2)
+                            .post("/", final_handler),
+                    ),
+            )
+        })
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.headers().get("Parent-Local"), None);
+    assert_eq!(res.headers().get("Parent-Recursive").unwrap(), "1");
+    assert_eq!(res.headers().get("Child-1").unwrap(), "1");
+    assert_eq!(res.headers().get("Child-2"), None);
+
+    let res = server.post("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.headers().get("Parent-Local"), None);
+    assert_eq!(res.headers().get("Parent-Recursive").unwrap(), "1");
+    assert_eq!(res.headers().get("Child-1"), None);
+    assert_eq!(res.headers().get("Child-2").unwrap(), "1");
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
