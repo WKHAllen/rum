@@ -4306,3 +4306,121 @@ async fn test_adjacent_route_groups() {
     let errors = server.stop().await;
     assert_no_server_errors!(errors);
 }
+
+#[tokio::test]
+async fn test_wildcard_path() {
+    #[handler]
+    async fn wildcard_handler() -> &'static str {
+        "wildcard response"
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test/{foo}", wildcard_handler))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test/bar", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "wildcard response");
+
+    let res = server.get("/test/123", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "wildcard response");
+
+    let res = server.get("/test/123.45", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "wildcard response");
+
+    let res = server.get("/test/true", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "wildcard response");
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    assert_eq!(
+        res.text().await.unwrap(),
+        "{\"error\":\"the requested path could not be found\"}"
+    );
+
+    let res = server.get("/test/bar/baz", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    assert_eq!(
+        res.text().await.unwrap(),
+        "{\"error\":\"the requested path could not be found\"}"
+    );
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_wildcard_path_preference() {
+    #[handler]
+    async fn wildcard_handler() -> &'static str {
+        "wildcard response"
+    }
+
+    #[handler]
+    async fn static_handler() -> &'static str {
+        "static response"
+    }
+
+    let server = TestServer::new()
+        .config(|server| {
+            server
+                .get("/test/{foo}", wildcard_handler)
+                .get("/test/bar", static_handler)
+        })
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test/foo", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "wildcard response");
+
+    let res = server.get("/test/bar", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "static response");
+
+    let res = server.get("/test/baz", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "wildcard response");
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_inline_handler() {
+    let server = TestServer::new()
+        .config(|server| {
+            server.get("/test", |req: Request| async move {
+                Response::new()
+                    .header("Content-Type", "text/plain")
+                    .body(&format!(
+                        "Hello, {}!",
+                        req.query_param("name").unwrap_or("<unknown>")
+                    ))
+            })
+        })
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test?name=Will", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "Hello, Will!");
+
+    let res = server.get("/test?name=Graydon", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "Hello, Graydon!");
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "Hello, <unknown>!");
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}

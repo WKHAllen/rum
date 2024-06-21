@@ -515,12 +515,14 @@ impl RouteLevel {
         path_match: RoutePathMatched,
     ) -> Result<(RoutePathMatched, CompleteRouteHandler)> {
         match path.split_first() {
-            None => self
-                .self_routes
-                .get(&method)
-                .cloned()
-                .map(|route| (path_match, route))
-                .ok_or(Error::MethodNotAllowed),
+            None => match self.self_routes.get(&method).cloned() {
+                Some(route) => Ok((path_match, route)),
+                None => Err(if self.self_routes.is_empty() {
+                    Error::NotFound
+                } else {
+                    Error::MethodNotAllowed
+                }),
+            },
             Some((first, rest)) => match first {
                 RoutePathSegment::Static(name) => match self.static_sub_routes.get(&name) {
                     Some(routes) => routes.get_recursive(
