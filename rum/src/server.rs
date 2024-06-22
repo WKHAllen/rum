@@ -4,7 +4,7 @@ use crate::error::Error;
 use crate::http::Method;
 use crate::middleware::Middleware;
 use crate::request::Request;
-use crate::response::{ErrorBody, Response};
+use crate::response::Response;
 use crate::routing::{RouteGroup, RouteHandler, RouteLevel, RoutePath};
 use crate::state::StateManager;
 use crate::typemap::TypeMap;
@@ -138,9 +138,7 @@ impl Service<HyperRequest<Incoming>> for ServerService {
 
                     res
                 }
-                Err(err) => Response::new()
-                    .status_code(err.response_status())
-                    .body_json(ErrorBody::new(err.to_string())),
+                Err(err) => err.as_response(),
             }
             .into())
         })

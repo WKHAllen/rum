@@ -1,6 +1,8 @@
 //! Crate-level error types.
 
-use crate::http::StatusCode;
+use crate::http::{Method, StatusCode};
+use crate::response::{ErrorBody, Response};
+use std::collections::HashSet;
 use std::str::Utf8Error;
 use thiserror::Error;
 
@@ -74,7 +76,7 @@ pub enum Error {
     NotFound,
     /// The requested path exists, but the method requested is not allowed.
     #[error("the requested method is not allowed")]
-    MethodNotAllowed,
+    MethodNotAllowed(HashSet<Method>),
     /// The request body content does not match the `Content-Type` header, or
     /// the header is not present.
     #[error("the request body content does not match the `Content-Type` header, or the header is not present")]
@@ -95,7 +97,7 @@ impl Error {
             | Self::HeaderParseError(_, _)
             | Self::CookieParseError(_, _)
             | Self::NotFound
-            | Self::MethodNotAllowed
+            | Self::MethodNotAllowed(_)
             | Self::UnsupportedMediaType => ErrorSource::Client,
             Self::ServerError(_)
             | Self::MissingPathParameterError(_)
@@ -118,13 +120,35 @@ impl Error {
             | Self::HeaderParseError(_, _)
             | Self::CookieParseError(_, _) => StatusCode::BAD_REQUEST,
             Self::NotFound => StatusCode::NOT_FOUND,
-            Self::MethodNotAllowed => StatusCode::METHOD_NOT_ALLOWED,
+            Self::MethodNotAllowed(_) => StatusCode::METHOD_NOT_ALLOWED,
             Self::UnsupportedMediaType => StatusCode::UNSUPPORTED_MEDIA_TYPE,
             Self::ServerError(_)
             | Self::MissingPathParameterError(_)
             | Self::UnknownStateTypeError(_)
             | Self::NoNextFunction => StatusCode::INTERNAL_SERVER_ERROR,
         }
+    }
+
+    /// Creates an HTTP response object from this error.
+    pub fn as_response(&self) -> Response {
+        let res = Response::new()
+            .status_code(self.response_status())
+            .body_json(ErrorBody::new(self.to_string()));
+
+        let res = if let Self::MethodNotAllowed(allow) = self {
+            res.header(
+                "Allow",
+                &allow
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            )
+        } else {
+            res
+        };
+
+        res
     }
 }
 

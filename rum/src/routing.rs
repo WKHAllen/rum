@@ -520,7 +520,9 @@ impl RouteLevel {
                 None => Err(if self.self_routes.is_empty() {
                     Error::NotFound
                 } else {
-                    Error::MethodNotAllowed
+                    Error::MethodNotAllowed(
+                        self.self_routes.keys().map(ToOwned::to_owned).collect(),
+                    )
                 }),
             },
             Some((first, rest)) => match first {

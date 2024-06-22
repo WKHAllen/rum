@@ -4,7 +4,7 @@ use crate::body::{BodyString, Json};
 use crate::cookie::SetCookie;
 use crate::error::{Error, ErrorSource, Result};
 use crate::http::StatusCode;
-use hyper::header::SET_COOKIE;
+use http::header::SET_COOKIE;
 use hyper::Response as HyperResponse;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

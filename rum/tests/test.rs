@@ -3,6 +3,7 @@ use rum::prelude::*;
 use rum::routing::{RoutePathMatchedSegment, RoutePathSegment};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::convert::Infallible;
 use std::io;
 use std::str::FromStr;
@@ -262,6 +263,17 @@ macro_rules! assert_no_server_errors {
     };
 }
 
+macro_rules! set {
+    ( $( $x:expr ),* $(,)? ) => {{
+        #[allow(unused_mut)]
+        let mut tmp = ::std::collections::HashSet::new();
+        $(
+            tmp.insert($x);
+        )*
+        tmp
+    }};
+}
+
 #[tokio::test]
 async fn test_automatic_200() {
     #[handler]
@@ -315,13 +327,28 @@ async fn test_automatic_405() {
     async fn res_405() {}
 
     let server = TestServer::new()
-        .config(|server| server.get("/test", res_405))
+        .config(|server| {
+            server
+                .get("/test", res_405)
+                .head("/test", res_405)
+                .delete("/test", res_405)
+        })
         .start()
         .await
         .unwrap();
 
     let res = server.post("/test", |req| req).await.unwrap();
     assert_eq!(res.status(), StatusCode::METHOD_NOT_ALLOWED);
+    let allow_header = res
+        .headers()
+        .get(http::header::ALLOW)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .split(", ")
+        .collect::<HashSet<_>>();
+    let expected_allow_header = set!["GET", "HEAD", "DELETE"];
+    assert_eq!(allow_header, expected_allow_header);
 
     let errors = server.stop().await;
     assert_no_server_errors!(errors);
@@ -384,7 +411,7 @@ async fn test_string_error() {
 
     let res = server
         .get("/test", |req| {
-            req.header(hyper::header::CONTENT_TYPE, "text/plain")
+            req.header(http::header::CONTENT_TYPE, "text/plain")
                 .body(vec![0, 159, 146, 150])
         })
         .await
@@ -417,7 +444,7 @@ async fn test_json_error() {
 
     let res = server
         .get("/test", |req| {
-            req.header(hyper::header::CONTENT_TYPE, "application/json")
+            req.header(http::header::CONTENT_TYPE, "application/json")
                 .body("{}")
         })
         .await
@@ -685,7 +712,7 @@ async fn test_cookie_parse_error() {
 
     let res = server
         .get("/test", |req| {
-            req.header(hyper::header::COOKIE, "parse_error=foo")
+            req.header(http::header::COOKIE, "parse_error=foo")
         })
         .await
         .unwrap();
@@ -773,7 +800,7 @@ async fn test_unsupported_media_type() {
 
     let res = server
         .get("/test/text", |req| {
-            req.header(hyper::header::CONTENT_TYPE, "application/json")
+            req.header(http::header::CONTENT_TYPE, "application/json")
         })
         .await
         .unwrap();
@@ -781,7 +808,7 @@ async fn test_unsupported_media_type() {
 
     let res = server
         .get("/test/json", |req| {
-            req.header(hyper::header::CONTENT_TYPE, "text/plain")
+            req.header(http::header::CONTENT_TYPE, "text/plain")
         })
         .await
         .unwrap();
@@ -939,7 +966,7 @@ async fn test_request_methods() {
         .get("/test/234?num=345", |req| {
             req.body("{\"num\":123}")
                 .header("num", "456")
-                .header(hyper::header::COOKIE, "num=567")
+                .header(http::header::COOKIE, "num=567")
         })
         .await
         .unwrap();
@@ -1022,7 +1049,7 @@ async fn test_extract_body_string() {
     let res = server
         .get("/test", |req| {
             req.body("Hello, body string!")
-                .header(hyper::header::CONTENT_TYPE, "text/plain")
+                .header(http::header::CONTENT_TYPE, "text/plain")
         })
         .await
         .unwrap();
@@ -1056,7 +1083,7 @@ async fn test_extract_json() {
     let res = server
         .get("/test", |req| {
             req.body("{\"num\":123}")
-                .header(hyper::header::CONTENT_TYPE, "application/json")
+                .header(http::header::CONTENT_TYPE, "application/json")
         })
         .await
         .unwrap();
@@ -1532,7 +1559,7 @@ async fn test_extract_cookie_map() {
         .unwrap();
 
     let res = server
-        .get("/test", |req| req.header(hyper::header::COOKIE, "num=123"))
+        .get("/test", |req| req.header(http::header::COOKIE, "num=123"))
         .await
         .unwrap();
     assert_eq!(res.status(), StatusCode::OK);
@@ -1574,7 +1601,7 @@ async fn test_extract_cookies() {
 
     let res = server
         .get("/test", |req| {
-            req.header(hyper::header::COOKIE, "message=hello_cookies")
+            req.header(http::header::COOKIE, "message=hello_cookies")
         })
         .await
         .unwrap();
@@ -1601,7 +1628,7 @@ async fn test_extract_cookie() {
         .unwrap();
 
     let res = server
-        .get("/test", |req| req.header(hyper::header::COOKIE, "num=123"))
+        .get("/test", |req| req.header(http::header::COOKIE, "num=123"))
         .await
         .unwrap();
     assert_eq!(res.status(), StatusCode::OK);
@@ -1630,7 +1657,7 @@ async fn test_extract_cookie_optional() {
         .unwrap();
 
     let res = server
-        .get("/test", |req| req.header(hyper::header::COOKIE, "num=123"))
+        .get("/test", |req| req.header(http::header::COOKIE, "num=123"))
         .await
         .unwrap();
     assert_eq!(res.status(), StatusCode::OK);
@@ -3072,7 +3099,7 @@ async fn test_cookie_parsing() {
     let res = server
         .get("/test", |req| {
             req.header(
-                hyper::header::COOKIE,
+                http::header::COOKIE,
                 "bool=true; char=c; int=1729; float=1.618; string=Rust; custom=hello",
             )
         })
@@ -3299,7 +3326,7 @@ async fn test_response_cookie() {
     assert_eq!(res.status(), StatusCode::OK);
     assert_eq!(
         res.headers()
-            .get_all(hyper::header::SET_COOKIE)
+            .get_all(http::header::SET_COOKIE)
             .into_iter()
             .collect::<Vec<_>>(),
         &[
@@ -3782,7 +3809,7 @@ async fn test_middleware() {
 
     let res = server
         .get("/admin/secret", |req| {
-            req.header(hyper::header::COOKIE, "token=0123456789ABCDEF")
+            req.header(http::header::COOKIE, "token=0123456789ABCDEF")
         })
         .await
         .unwrap();
@@ -3794,7 +3821,7 @@ async fn test_middleware() {
 
     let res = server
         .get("/admin/secret", |req| {
-            req.header(hyper::header::COOKIE, "token=invalid")
+            req.header(http::header::COOKIE, "token=invalid")
         })
         .await
         .unwrap();
@@ -3826,7 +3853,7 @@ async fn test_middleware_mutate_response() {
 
     let res = server
         .get("/test", |req| {
-            req.header(hyper::header::COOKIE, "token=0123456789ABCDEF")
+            req.header(http::header::COOKIE, "token=0123456789ABCDEF")
         })
         .await
         .unwrap();
