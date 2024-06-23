@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 /// A representation of a map of query parameters.
 #[derive(Debug, Clone, PartialEq, Default)]
-pub struct QueryParamMap(pub(crate) Arc<HashMap<String, String>>);
+pub struct QueryParamMap(pub(crate) Arc<HashMap<String, Option<String>>>);
 
 impl QueryParamMap {
     /// Gets a required query parameter value, returning `Err` if the query
@@ -33,9 +33,13 @@ impl QueryParamMap {
         self.get(query).and_then(|value| T::parse(query, value))
     }
 
-    /// Gets an optional query parameter value.
+    /// Gets an optional query parameter value. If the query key is present but
+    /// no value is specified, `Some("")` is returned.
     pub fn get_optional(&self, query: &str) -> Option<&str> {
-        self.0.get(query).map(|s| s.as_str())
+        self.0.get(query).map(|maybe_s| match maybe_s {
+            Some(s) => s.as_str(),
+            None => "",
+        })
     }
 
     /// Gets an optional query parameter value and attempts to parse it into
@@ -49,6 +53,12 @@ impl QueryParamMap {
             Some(value) => Ok(Some(T::parse(query, value)?)),
             None => Ok(None),
         }
+    }
+
+    /// Gets a boolean query parameter value. The existence of the parameter
+    /// alone will cause this to return `true`.
+    pub fn get_bool(&self, query: &str) -> bool {
+        self.0.contains_key(query)
     }
 }
 
@@ -70,7 +80,8 @@ impl From<&str> for QueryParamMap {
                     .and_then(|value| urlencoding::decode(value).ok());
 
                 match (name, value) {
-                    (Some(name), Some(value)) => Some((name.to_owned(), value.into_owned())),
+                    (Some(name), Some(value)) => Some((name.to_owned(), Some(value.into_owned()))),
+                    (Some(name), None) => Some((name.to_owned(), None)),
                     _ => None,
                 }
             })
@@ -84,8 +95,8 @@ impl From<String> for QueryParamMap {
     }
 }
 
-impl From<HashMap<String, String>> for QueryParamMap {
-    fn from(value: HashMap<String, String>) -> Self {
+impl From<HashMap<String, Option<String>>> for QueryParamMap {
+    fn from(value: HashMap<String, Option<String>>) -> Self {
         Self(Arc::new(value))
     }
 }
@@ -103,30 +114,30 @@ where
 }
 
 impl<'a> IntoIterator for &'a QueryParamMap {
-    type Item = (&'a String, &'a String);
-    type IntoIter = Iter<'a, String, String>;
+    type Item = (&'a String, &'a Option<String>);
+    type IntoIter = Iter<'a, String, Option<String>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter()
     }
 }
 
-impl FromIterator<(String, String)> for QueryParamMap {
-    fn from_iter<T: IntoIterator<Item = (String, String)>>(iter: T) -> Self {
+impl FromIterator<(String, Option<String>)> for QueryParamMap {
+    fn from_iter<T: IntoIterator<Item = (String, Option<String>)>>(iter: T) -> Self {
         Self(Arc::new(iter.into_iter().collect()))
     }
 }
 
 impl Deref for QueryParamMap {
-    type Target = HashMap<String, String>;
+    type Target = HashMap<String, Option<String>>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl Borrow<HashMap<String, String>> for QueryParamMap {
-    fn borrow(&self) -> &HashMap<String, String> {
+impl Borrow<HashMap<String, Option<String>>> for QueryParamMap {
+    fn borrow(&self) -> &HashMap<String, Option<String>> {
         &self.0
     }
 }
@@ -326,6 +337,50 @@ where
     T: ParseQueryParam,
 {
     fn borrow_mut(&mut self) -> &mut Option<T> {
+        &mut self.0
+    }
+}
+
+/// A single boolean query parameter. This can be used to extract a query
+/// parameter whose value is unspecified and instead determined by whether or
+/// not the query key is present in the URI.
+#[cfg(feature = "nightly")]
+pub struct QueryParamBool<const Q: &'static str>(pub bool);
+
+#[cfg(feature = "nightly")]
+impl<const Q: &'static str> QueryParamBool<Q> {
+    /// Moves the query value out of this wrapper.
+    pub fn into_inner(self) -> bool {
+        self.0
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<const Q: &'static str> Deref for QueryParamBool<Q> {
+    type Target = bool;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<const Q: &'static str> DerefMut for QueryParamBool<Q> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<const Q: &'static str> Borrow<bool> for QueryParamBool<Q> {
+    fn borrow(&self) -> &bool {
+        &self.0
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<const Q: &'static str> BorrowMut<bool> for QueryParamBool<Q> {
+    fn borrow_mut(&mut self) -> &mut bool {
         &mut self.0
     }
 }

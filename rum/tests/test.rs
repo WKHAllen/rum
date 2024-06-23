@@ -943,6 +943,15 @@ async fn test_request_methods() {
         let query_param_optional_as = req.query_param_optional_as::<i32>("num").unwrap().unwrap();
         assert_eq!(query_param_optional_as, 345);
 
+        let query_param_bool = req.query_param_bool("foo");
+        assert!(query_param_bool);
+
+        let query_param_bool_with_value = req.query_param_bool("num");
+        assert!(query_param_bool_with_value);
+
+        let invalid_query_param_bool = req.query_param_bool("bar");
+        assert!(!invalid_query_param_bool);
+
         let header = req.header("num").unwrap();
         assert_eq!(header, &["456"]);
 
@@ -1004,7 +1013,7 @@ async fn test_request_methods() {
         .unwrap();
 
     let res = server
-        .get("/test/234?num=345", |req| {
+        .get("/test/234?num=345&foo", |req| {
             req.body("{\"num\":123}")
                 .header("num", "456")
                 .header(http::header::COOKIE, "num=567")
@@ -1442,6 +1451,33 @@ async fn test_extract_query_param_optional() {
         .unwrap();
 
     let res = server.get("/test?num=123", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_extract_query_param_bool() {
+    async fn extract_query_param_bool(req: Request) -> Response {
+        let query_param = QueryParamBool::<"num">::from_request(&req).unwrap();
+        assert!(*query_param);
+        assert!(query_param.into_inner());
+
+        let query_param = QueryParamBool::<"invalid">::from_request(&req).unwrap();
+        assert!(!*query_param);
+        assert!(!query_param.into_inner());
+
+        Response::new()
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", extract_query_param_bool))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test?num", |req| req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
 
     let errors = server.stop().await;

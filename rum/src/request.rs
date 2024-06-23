@@ -15,7 +15,7 @@ use crate::path::PathParam;
 use crate::path::{ParsePathParam, PathParamMap, PathParams};
 use crate::query::{ParseQueryParam, QueryParamMap, QueryParams};
 #[cfg(feature = "nightly")]
-use crate::query::{QueryParam, QueryParamOptional};
+use crate::query::{QueryParam, QueryParamBool, QueryParamOptional};
 use crate::routing::{RoutePath, RoutePathMatched, RoutePathMatchedSegment, RoutePathString};
 use crate::state::{LocalState, State, StateManager};
 use http::header::COOKIE;
@@ -181,6 +181,12 @@ impl RequestInner {
         T: ParseQueryParam,
     {
         self.query.get_optional_as(query)
+    }
+
+    /// Gets a boolean query parameter value. The existence of the parameter
+    /// alone will cause this to return `true`.
+    pub fn query_param_bool(&self, query: &str) -> bool {
+        self.query.get_bool(query)
     }
 
     /// Gets a required header value.
@@ -442,6 +448,13 @@ where
             Some(value) => Some(T::parse(Q, value)?),
             None => None,
         }))
+    }
+}
+
+#[cfg(feature = "nightly")]
+impl<const Q: &'static str> FromRequest for QueryParamBool<Q> {
+    fn from_request(req: &Request) -> Result<Self> {
+        Ok(Self(req.query_param_bool(Q)))
     }
 }
 
