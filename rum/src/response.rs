@@ -107,8 +107,13 @@ impl Response {
         T: Serialize,
     {
         if let Self::Ok(inner) = &mut self {
-            if let Ok(body) = serde_json::to_string(&body) {
-                inner.body = Some(body);
+            match serde_json::to_string(&body) {
+                Ok(body) => {
+                    inner.body = Some(body);
+                }
+                Err(err) => {
+                    self = Self::Err(Arc::new(Error::ServerJsonError(err)));
+                }
             }
         }
 

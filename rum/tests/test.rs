@@ -3,7 +3,7 @@ use rum::prelude::*;
 use rum::routing::{RoutePathMatchedSegment, RoutePathSegment};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
 use std::io;
 use std::str::FromStr;
@@ -261,6 +261,17 @@ macro_rules! assert_no_server_errors {
             panic!("test server produced errors:\n{:#?}", $errors);
         }
     };
+}
+
+macro_rules! map {
+    ( $( $k:expr => $v:expr ),* $(,)? ) => {{
+        #[allow(unused_mut)]
+        let mut tmp = ::std::collections::HashMap::new();
+        $(
+            tmp.insert($k, $v);
+        )*
+        tmp
+    }};
 }
 
 macro_rules! set {
@@ -816,6 +827,36 @@ async fn test_unsupported_media_type() {
 
     let errors = server.stop().await;
     assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_server_json_error() {
+    #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    struct TestNum {
+        num: usize,
+    }
+
+    #[handler]
+    async fn server_json_error() -> Json<HashMap<TestNum, &str>> {
+        Json(map! {
+            TestNum { num: 1 } => "first",
+            TestNum { num: 2 } => "second",
+            TestNum { num: 3 } => "third",
+        })
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", server_json_error))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+    let errors = server.stop().await;
+    assert_eq!(errors.len(), 1);
+    assert!(matches!(*errors[0], Error::ServerJsonError(_)));
 }
 
 #[tokio::test]

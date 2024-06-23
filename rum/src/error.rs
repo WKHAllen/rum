@@ -34,7 +34,8 @@ pub enum Error {
     /// An error occurred while parsing a request body into a string.
     #[error("string parse error: {0}")]
     StringError(#[from] Utf8Error),
-    /// An error occurred while serializing or deserializing JSON data.
+    /// An error occurred while serializing or deserializing JSON data on the
+    /// client side.
     #[error("json error: {0}")]
     JsonError(#[from] serde_json::Error),
     /// A `hyper` server error occurred.
@@ -81,6 +82,10 @@ pub enum Error {
     /// the header is not present.
     #[error("the request body content does not match the `Content-Type` header, or the header is not present")]
     UnsupportedMediaType,
+    /// An error occurred while serializing or deserializing JSON data on the
+    /// server side.
+    #[error("server json error: {0}")]
+    ServerJsonError(serde_json::Error),
 }
 
 impl Error {
@@ -102,7 +107,8 @@ impl Error {
             Self::ServerError(_)
             | Self::MissingPathParameterError(_)
             | Self::UnknownStateTypeError(_)
-            | Self::NoNextFunction => ErrorSource::Server,
+            | Self::NoNextFunction
+            | Self::ServerJsonError(_) => ErrorSource::Server,
         }
     }
 
@@ -125,7 +131,8 @@ impl Error {
             Self::ServerError(_)
             | Self::MissingPathParameterError(_)
             | Self::UnknownStateTypeError(_)
-            | Self::NoNextFunction => StatusCode::INTERNAL_SERVER_ERROR,
+            | Self::NoNextFunction
+            | Self::ServerJsonError(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 
