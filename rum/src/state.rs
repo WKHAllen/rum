@@ -10,6 +10,7 @@ use tokio::sync::Mutex;
 /// `T` must implement `Clone` in order to be used as a state. This usually
 /// means you'll want to wrap your data in an `Arc`. This `deref`s to `T`, and
 /// can be moved out of `self` with [`into_inner`](Self::into_inner).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct State<T>(pub T)
 where
     T: Clone;

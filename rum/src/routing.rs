@@ -16,7 +16,7 @@ use std::sync::Arc;
 use std::vec::IntoIter;
 
 /// A segment of a route path.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum RoutePathSegment {
     /// A static path segment.
     Static(String),
@@ -46,7 +46,7 @@ impl Display for RoutePathSegment {
 }
 
 /// A route path.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RoutePath(Arc<[RoutePathSegment]>);
 
 impl RoutePath {
@@ -216,7 +216,7 @@ impl<'a> FromIterator<&'a RoutePathSegment> for RoutePath {
 }
 
 /// A segment of a matched route path.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum RoutePathMatchedSegment {
     /// A static path segment.
     Static(String),
@@ -225,7 +225,7 @@ pub enum RoutePathMatchedSegment {
 }
 
 /// A matched route path.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RoutePathMatched(Arc<[RoutePathMatchedSegment]>);
 
 impl RoutePathMatched {
@@ -352,7 +352,7 @@ impl<'a> FromIterator<&'a RoutePathMatchedSegment> for RoutePathMatched {
 }
 
 /// A route path represented as a string.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RoutePathString(pub String);
 
 impl RoutePathString {

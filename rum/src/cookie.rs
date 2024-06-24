@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 /// A representation of a map of cookies.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CookieMap(pub(crate) Arc<HashMap<String, String>>);
 
 impl CookieMap {
@@ -108,7 +108,7 @@ impl Borrow<HashMap<String, String>> for CookieMap {
 /// This is limited by implementation details, so all fields in `T` must have
 /// values of type `String` or `Option<String>`. Attempts to parse cookie values
 /// from other types will fail.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Cookies<T>(pub(crate) T)
 where
     T: DeserializeOwned;
@@ -182,6 +182,7 @@ where
 
 /// A single required cookie.
 #[cfg(feature = "nightly")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Cookie<const C: &'static str, T = String>(pub(crate) T)
 where
     T: ParseCookie;
@@ -241,6 +242,7 @@ where
 
 /// A single optional cookie.
 #[cfg(feature = "nightly")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CookieOptional<const C: &'static str, T = String>(pub(crate) Option<T>)
 where
     T: ParseCookie;
@@ -299,7 +301,7 @@ where
 }
 
 /// Configuration for setting a cookie.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SetCookie {
     /// The name of the cookie.
     pub(crate) name: String,

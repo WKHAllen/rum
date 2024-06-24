@@ -11,7 +11,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 /// A representation of a map of headers.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct HeaderMap(pub(crate) Arc<HashMap<String, Vec<String>>>);
 
 impl HeaderMap {
@@ -125,7 +125,7 @@ impl Borrow<HashMap<String, Vec<String>>> for HeaderMap {
 /// This is limited by implementation details, so all fields in `T` must have
 /// values of type `Vec<String>` or `Option<Vec<String>>`. Attempts to parse
 /// header values from other types will fail.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Headers<T>(pub(crate) T)
 where
     T: DeserializeOwned;
@@ -199,6 +199,7 @@ where
 
 /// A single required request header.
 #[cfg(feature = "nightly")]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Header<const H: &'static str, T = String>(pub(crate) Vec<T>)
 where
     T: ParseHeader;
@@ -258,6 +259,7 @@ where
 
 /// A single optional request header.
 #[cfg(feature = "nightly")]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct HeaderOptional<const H: &'static str, T = String>(pub(crate) Option<Vec<T>>)
 where
     T: ParseHeader;

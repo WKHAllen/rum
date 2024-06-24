@@ -30,7 +30,7 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 /// The internal request type.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RequestInner {
     /// The raw request body.
     body: Arc<[u8]>,

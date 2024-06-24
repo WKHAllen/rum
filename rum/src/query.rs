@@ -11,7 +11,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 /// A representation of a map of query parameters.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct QueryParamMap(pub(crate) Arc<HashMap<String, Option<String>>>);
 
 impl QueryParamMap {
@@ -150,7 +150,7 @@ impl Borrow<HashMap<String, Option<String>>> for QueryParamMap {
 /// This is limited by implementation details, so all fields in `T` must have
 /// values of type `String` or `Option<String>`. Attempts to parse query
 /// parameter values from other types will fail.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct QueryParams<T>(pub(crate) T)
 where
     T: DeserializeOwned;
@@ -225,6 +225,7 @@ where
 
 /// A single required query parameter.
 #[cfg(feature = "nightly")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct QueryParam<const Q: &'static str, T = String>(pub(crate) T)
 where
     T: ParseQueryParam;
@@ -284,6 +285,7 @@ where
 
 /// A single optional query parameter.
 #[cfg(feature = "nightly")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct QueryParamOptional<const Q: &'static str, T = String>(pub(crate) Option<T>)
 where
     T: ParseQueryParam;
@@ -345,6 +347,7 @@ where
 /// parameter whose value is unspecified and instead determined by whether or
 /// not the query key is present in the URI.
 #[cfg(feature = "nightly")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct QueryParamBool<const Q: &'static str>(pub bool);
 
 #[cfg(feature = "nightly")]

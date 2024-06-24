@@ -5,7 +5,7 @@ use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
 /// The HTTP request body as a raw byte slice. This `deref`s to `&[u8]`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BodyRaw(pub(crate) Arc<[u8]>);
 
 impl Deref for BodyRaw {
@@ -23,7 +23,7 @@ impl Borrow<[u8]> for BodyRaw {
 }
 
 /// The HTTP request body as a string.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BodyString(pub String);
 
 impl BodyString {
@@ -69,7 +69,7 @@ impl Borrow<str> for BodyString {
 /// must implement `serde`'s `DeserializeOwned` trait for requests, or
 /// `Serialize` trait for responses. This `deref`s to `T`, and can be moved out
 /// of `self` with [`into_inner`](Self::into_inner).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Json<T>(pub T);
 
 impl<T> Json<T> {

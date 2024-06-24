@@ -36,7 +36,7 @@ impl ErrorBody {
 }
 
 /// The internal representation of an HTTP response.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ResponseInner {
     /// The response status code.
     pub code: Option<StatusCode>,

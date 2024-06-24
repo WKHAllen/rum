@@ -11,7 +11,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 /// A representation of a map of path parameters.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PathParamMap(pub(crate) Arc<HashMap<String, String>>);
 
 impl PathParamMap {
@@ -58,6 +58,7 @@ impl<'a> IntoIterator for &'a PathParamMap {
 /// This is limited by implementation details, so all fields in `T` must have
 /// values of type `String` or `Option<String>`. Attempts to parse path
 /// parameter values from other types will fail.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PathParams<T>(pub(crate) T)
 where
     T: DeserializeOwned;
@@ -132,6 +133,7 @@ where
 
 /// A single path parameter.
 #[cfg(feature = "nightly")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PathParam<const P: &'static str, T = String>(pub(crate) T)
 where
     T: ParsePathParam;
