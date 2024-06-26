@@ -1,11 +1,18 @@
+#![feature(fn_traits)]
+
 use rum::error::{Error, Result};
 use rum::prelude::*;
+use rum::request::RequestInner;
+use rum::response::ResponseInner;
 use rum::routing::{RoutePathMatchedSegment, RoutePathSegment};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use std::borrow::{Borrow, BorrowMut};
 use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
+use std::fmt::Debug;
 use std::io;
+use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -253,6 +260,27 @@ impl TestServerHandle {
 
         errors
     }
+}
+
+fn assert_inner<T, U>(outer: &T, inner: &U)
+where
+    T: Deref<Target = U> + Borrow<U> + ?Sized,
+    U: PartialEq + Debug + ?Sized,
+{
+    assert_eq!(outer.deref(), inner.borrow());
+    assert_eq!(outer.borrow(), inner.borrow());
+    assert_eq!(&**outer, inner.borrow());
+}
+
+fn assert_inner_mut<T, U>(outer: &mut T, inner: &U)
+where
+    T: DerefMut<Target = U> + BorrowMut<U> + ?Sized,
+    U: PartialEq + Debug + ?Sized,
+{
+    assert_inner(outer, inner);
+    assert_eq!(outer.deref_mut(), inner.borrow());
+    assert_eq!(outer.borrow_mut(), inner.borrow());
+    assert_eq!(&mut **outer, inner.borrow());
 }
 
 macro_rules! assert_no_server_errors {
@@ -889,6 +917,9 @@ async fn test_request_methods() {
     }
 
     async fn request_methods(req: Request) -> Response {
+        assert!(matches!(req.deref(), RequestInner { .. }));
+        assert!(matches!(req.borrow(), RequestInner { .. }));
+
         let body_str = std::str::from_utf8(req.body()).unwrap();
         assert_eq!(body_str, "{\"num\":123}");
 
@@ -1060,6 +1091,7 @@ async fn test_extract_body_raw() {
     async fn extract_body_raw(req: Request) -> Response {
         let body_raw = BodyRaw::from_request(&req).unwrap();
         assert_eq!(&*body_raw, &[0, 159, 146, 150]);
+        assert_inner(&body_raw, &[0, 159, 146, 150]);
 
         Response::new()
     }
@@ -1083,8 +1115,9 @@ async fn test_extract_body_raw() {
 #[tokio::test]
 async fn test_extract_body_string() {
     async fn extract_body_string(req: Request) -> Response {
-        let body_str = BodyString::from_request(&req).unwrap();
+        let mut body_str = BodyString::from_request(&req).unwrap();
         assert_eq!(*body_str, "Hello, body string!");
+        assert_inner_mut(&mut body_str, &"Hello, body string!".to_owned());
         assert_eq!(body_str.into_inner(), "Hello, body string!");
 
         Response::new()
@@ -1117,8 +1150,9 @@ async fn test_extract_json() {
     }
 
     async fn extract_json(req: Request) -> Response {
-        let body_json = Json::<TestJson>::from_request(&req).unwrap();
+        let mut body_json = Json::<TestJson>::from_request(&req).unwrap();
         assert_eq!(*body_json, TestJson { num: 123 });
+        assert_inner_mut(&mut body_json, &TestJson { num: 123 });
         assert_eq!(body_json.into_inner(), TestJson { num: 123 });
 
         Response::new()
@@ -1168,8 +1202,9 @@ async fn test_extract_method() {
 #[tokio::test]
 async fn test_extract_route_path_string() {
     async fn extract_route_path(req: Request) -> Response {
-        let route_path_str = RoutePathString::from_request(&req).unwrap();
+        let mut route_path_str = RoutePathString::from_request(&req).unwrap();
         assert_eq!(*route_path_str, "/test/123");
+        assert_inner_mut(&mut route_path_str, &"/test/123".to_owned());
         assert_eq!(route_path_str.into_inner(), "/test/123");
 
         Response::new()
@@ -1199,6 +1234,13 @@ async fn test_extract_route_path() {
                 RoutePathSegment::Static("123".to_owned())
             ]
         );
+        assert_inner(
+            &route_path,
+            &[
+                RoutePathSegment::Static("test".to_owned()),
+                RoutePathSegment::Static("123".to_owned()),
+            ],
+        );
 
         Response::new()
     }
@@ -1226,6 +1268,13 @@ async fn test_extract_route_path_matched() {
                 RoutePathMatchedSegment::Static("test".to_owned()),
                 RoutePathMatchedSegment::Wildcard("num".to_owned(), "123".to_owned())
             ]
+        );
+        assert_inner(
+            &route_path_matched,
+            &[
+                RoutePathMatchedSegment::Static("test".to_owned()),
+                RoutePathMatchedSegment::Wildcard("num".to_owned(), "123".to_owned()),
+            ],
         );
 
         Response::new()
@@ -1277,12 +1326,18 @@ async fn test_extract_path_params() {
     }
 
     async fn extract_path_params(req: Request) -> Response {
-        let path_params = PathParams::<TestPathParams>::from_request(&req).unwrap();
+        let mut path_params = PathParams::<TestPathParams>::from_request(&req).unwrap();
         assert_eq!(
             *path_params,
             TestPathParams {
                 message: "hello_path_params".to_owned()
             }
+        );
+        assert_inner_mut(
+            &mut path_params,
+            &TestPathParams {
+                message: "hello_path_params".to_owned(),
+            },
         );
         assert_eq!(
             path_params.into_inner(),
@@ -1313,8 +1368,9 @@ async fn test_extract_path_params() {
 #[tokio::test]
 async fn test_extract_path_param() {
     async fn extract_path_param(req: Request) -> Response {
-        let path_param = PathParam::<"num", i32>::from_request(&req).unwrap();
+        let mut path_param = PathParam::<"num", i32>::from_request(&req).unwrap();
         assert_eq!(*path_param, 123);
+        assert_inner_mut(&mut path_param, &123);
         assert_eq!(path_param.into_inner(), 123);
 
         Response::new()
@@ -1350,6 +1406,12 @@ async fn test_extract_query_param_map() {
             query_param_map.get_optional_as::<i32>("invalid").unwrap(),
             None
         );
+        assert_inner(
+            &query_param_map,
+            &map! {
+                "num".to_owned() => Some("123".to_owned()),
+            },
+        );
 
         Response::new()
     }
@@ -1375,12 +1437,18 @@ async fn test_extract_query_params() {
     }
 
     async fn extract_query_params(req: Request) -> Response {
-        let query_params = QueryParams::<TestQueryParams>::from_request(&req).unwrap();
+        let mut query_params = QueryParams::<TestQueryParams>::from_request(&req).unwrap();
         assert_eq!(
             *query_params,
             TestQueryParams {
                 message: "hello_query_params".to_owned()
             }
+        );
+        assert_inner_mut(
+            &mut query_params,
+            &TestQueryParams {
+                message: "hello_query_params".to_owned(),
+            },
         );
         assert_eq!(
             query_params.into_inner(),
@@ -1411,8 +1479,9 @@ async fn test_extract_query_params() {
 #[tokio::test]
 async fn test_extract_query_param() {
     async fn extract_query_param(req: Request) -> Response {
-        let query_param = QueryParam::<"num", i32>::from_request(&req).unwrap();
+        let mut query_param = QueryParam::<"num", i32>::from_request(&req).unwrap();
         assert_eq!(*query_param, 123);
+        assert_inner_mut(&mut query_param, &123);
         assert_eq!(query_param.into_inner(), 123);
 
         Response::new()
@@ -1434,8 +1503,9 @@ async fn test_extract_query_param() {
 #[tokio::test]
 async fn test_extract_query_param_optional() {
     async fn extract_query_param(req: Request) -> Response {
-        let query_param = QueryParamOptional::<"num", i32>::from_request(&req).unwrap();
+        let mut query_param = QueryParamOptional::<"num", i32>::from_request(&req).unwrap();
         assert_eq!(*query_param, Some(123));
+        assert_inner_mut(&mut query_param, &Some(123));
         assert_eq!(query_param.into_inner(), Some(123));
 
         let query_param_invalid = QueryParamOptional::<"invalid", i32>::from_request(&req).unwrap();
@@ -1460,12 +1530,14 @@ async fn test_extract_query_param_optional() {
 #[tokio::test]
 async fn test_extract_query_param_bool() {
     async fn extract_query_param_bool(req: Request) -> Response {
-        let query_param = QueryParamBool::<"num">::from_request(&req).unwrap();
+        let mut query_param = QueryParamBool::<"num">::from_request(&req).unwrap();
         assert!(*query_param);
+        assert_inner_mut(&mut query_param, &true);
         assert!(query_param.into_inner());
 
-        let query_param = QueryParamBool::<"invalid">::from_request(&req).unwrap();
+        let mut query_param = QueryParamBool::<"invalid">::from_request(&req).unwrap();
         assert!(!*query_param);
+        assert_inner_mut(&mut query_param, &false);
         assert!(!query_param.into_inner());
 
         Response::new()
@@ -1498,6 +1570,11 @@ async fn test_extract_header_map() {
         assert!(header_map.get_optional_as::<bool>("num").is_err());
         assert_eq!(header_map.get_optional("invalid"), None);
         assert_eq!(header_map.get_optional_as::<i32>("invalid").unwrap(), None);
+        assert_eq!(header_map.deref().get("num"), Some(&vec!["123".to_owned()]));
+        assert_eq!(
+            Borrow::<HashMap<_, _>>::borrow(&header_map).get("num"),
+            Some(&vec!["123".to_owned()])
+        );
 
         Response::new()
     }
@@ -1526,12 +1603,18 @@ async fn test_extract_headers() {
     }
 
     async fn extract_headers(req: Request) -> Response {
-        let headers = Headers::<TestHeaders>::from_request(&req).unwrap();
+        let mut headers = Headers::<TestHeaders>::from_request(&req).unwrap();
         assert_eq!(
             *headers,
             TestHeaders {
                 message: vec!["hello_headers".to_owned()]
             }
+        );
+        assert_inner_mut(
+            &mut headers,
+            &TestHeaders {
+                message: vec!["hello_headers".to_owned()],
+            },
         );
         assert_eq!(
             headers.into_inner(),
@@ -1562,8 +1645,9 @@ async fn test_extract_headers() {
 #[tokio::test]
 async fn test_extract_header() {
     async fn extract_header(req: Request) -> Response {
-        let header = Header::<"num", i32>::from_request(&req).unwrap();
+        let mut header = Header::<"num", i32>::from_request(&req).unwrap();
         assert_eq!(*header, &[123]);
+        assert_inner_mut(&mut header, &vec![123]);
         assert_eq!(header.into_inner(), &[123]);
 
         Response::new()
@@ -1588,8 +1672,9 @@ async fn test_extract_header() {
 #[tokio::test]
 async fn test_extract_header_optional() {
     async fn extract_header(req: Request) -> Response {
-        let header = HeaderOptional::<"num", i32>::from_request(&req).unwrap();
+        let mut header = HeaderOptional::<"num", i32>::from_request(&req).unwrap();
         assert_eq!(*header, Some(vec![123]));
+        assert_inner_mut(&mut header, &Some(vec![123]));
         assert_eq!(header.into_inner(), Some(vec![123]));
 
         let header_invalid = HeaderOptional::<"invalid", i32>::from_request(&req).unwrap();
@@ -1625,6 +1710,12 @@ async fn test_extract_cookie_map() {
         assert!(cookie_map.get_optional_as::<bool>("num").is_err());
         assert_eq!(cookie_map.get_optional("invalid"), None);
         assert_eq!(cookie_map.get_optional_as::<i32>("invalid").unwrap(), None);
+        assert_inner(
+            &cookie_map,
+            &map! {
+                "num".to_owned() => "123".to_owned()
+            },
+        );
 
         Response::new()
     }
@@ -1653,12 +1744,18 @@ async fn test_extract_cookies() {
     }
 
     async fn extract_cookies(req: Request) -> Response {
-        let cookies = Cookies::<TestCookies>::from_request(&req).unwrap();
+        let mut cookies = Cookies::<TestCookies>::from_request(&req).unwrap();
         assert_eq!(
             *cookies,
             TestCookies {
                 message: "hello_cookies".to_owned()
             }
+        );
+        assert_inner_mut(
+            &mut cookies,
+            &TestCookies {
+                message: "hello_cookies".to_owned(),
+            },
         );
         assert_eq!(
             cookies.into_inner(),
@@ -1691,8 +1788,9 @@ async fn test_extract_cookies() {
 #[tokio::test]
 async fn test_extract_cookie() {
     async fn extract_cookie(req: Request) -> Response {
-        let cookie = Cookie::<"num", i32>::from_request(&req).unwrap();
+        let mut cookie = Cookie::<"num", i32>::from_request(&req).unwrap();
         assert_eq!(*cookie, 123);
+        assert_inner_mut(&mut cookie, &123);
         assert_eq!(cookie.into_inner(), 123);
 
         Response::new()
@@ -1717,8 +1815,9 @@ async fn test_extract_cookie() {
 #[tokio::test]
 async fn test_extract_cookie_optional() {
     async fn extract_cookie(req: Request) -> Response {
-        let cookie = CookieOptional::<"num", i32>::from_request(&req).unwrap();
+        let mut cookie = CookieOptional::<"num", i32>::from_request(&req).unwrap();
         assert_eq!(*cookie, Some(123));
+        assert_inner_mut(&mut cookie, &Some(123));
         assert_eq!(cookie.into_inner(), Some(123));
 
         let cookie_invalid = CookieOptional::<"invalid", i32>::from_request(&req).unwrap();
@@ -1751,8 +1850,9 @@ async fn test_extract_state() {
     }
 
     async fn extract_state(req: Request) -> Response {
-        let state = State::<TestState>::from_request(&req).unwrap();
+        let mut state = State::<TestState>::from_request(&req).unwrap();
         assert_eq!(*state, TestState { num: 123 });
+        assert_inner_mut(&mut state, &TestState { num: 123 });
         assert_eq!(state.into_inner(), TestState { num: 123 });
 
         Response::new()
@@ -1825,8 +1925,18 @@ async fn test_extract_local_state() {
 #[tokio::test]
 async fn test_extract_next_fn() {
     async fn extract_next_fn_middleware(req: Request) -> Response {
-        let next = NextFn::from_request(&req).unwrap();
-        next.call(req).await
+        let mut next = NextFn::from_request(&req).unwrap();
+
+        let res = Fn::<(Request,)>::call(&next, (req.clone(),)).await;
+        assert!(matches!(res, Response::Ok(inner) if inner == ResponseInner::default()));
+
+        let res = FnMut::<(Request,)>::call_mut(&mut next, (req.clone(),)).await;
+        assert!(matches!(res, Response::Ok(inner) if inner == ResponseInner::default()));
+
+        let res = FnOnce::<(Request,)>::call_once(next, (req,)).await;
+        assert!(matches!(&res, Response::Ok(inner) if *inner == ResponseInner::default()));
+
+        res
     }
 
     async fn extract_next_fn(req: Request) -> Response {

@@ -6,13 +6,13 @@ use crate::error::{Error, ErrorSource, Result};
 use crate::http::StatusCode;
 use http::header::SET_COOKIE;
 use hyper::Response as HyperResponse;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::sync::Arc;
 
 /// An internal type used to return error responses to the client.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub(crate) struct ErrorBody {
     /// The error message.
     error: String,

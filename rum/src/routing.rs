@@ -5,11 +5,11 @@ use crate::http::Method;
 use crate::middleware::{AppliedMiddleware, Middleware, MiddlewareCollection, NextFn};
 use crate::request::Request;
 use crate::response::Response;
-use std::borrow::Borrow;
+use std::borrow::{Borrow, BorrowMut};
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::future::Future;
-use std::ops::{Bound, Deref, RangeBounds};
+use std::ops::{Bound, Deref, DerefMut, RangeBounds};
 use std::pin::Pin;
 use std::slice::Iter;
 use std::sync::Arc;
@@ -376,9 +376,21 @@ impl Deref for RoutePathString {
     }
 }
 
+impl DerefMut for RoutePathString {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
 impl Borrow<String> for RoutePathString {
     fn borrow(&self) -> &String {
         &self.0
+    }
+}
+
+impl BorrowMut<String> for RoutePathString {
+    fn borrow_mut(&mut self) -> &mut String {
+        &mut self.0
     }
 }
 

@@ -9,6 +9,9 @@ run:
 test:
 	cargo test -- --nocapture
 
+coverage:
+	cargo llvm-cov --open
+
 lint:
 	cargo clippy -- -D warnings
 
