@@ -407,7 +407,7 @@ where
     T: ParsePathParam,
 {
     fn from_request(req: &Request) -> Result<Self> {
-        Ok(Self(T::parse(P, req.path_params.get(P)?)?))
+        Ok(Self(req.path_param_as(P)?))
     }
 }
 
@@ -434,7 +434,7 @@ where
     T: ParseQueryParam,
 {
     fn from_request(req: &Request) -> Result<Self> {
-        Ok(Self(T::parse(Q, req.query_param(Q)?)?))
+        Ok(Self(req.query_param_as(Q)?))
     }
 }
 
@@ -444,10 +444,7 @@ where
     T: ParseQueryParam,
 {
     fn from_request(req: &Request) -> Result<Self> {
-        Ok(Self(match req.query_param_optional(Q) {
-            Some(value) => Some(T::parse(Q, value)?),
-            None => None,
-        }))
+        Ok(Self(req.query_param_optional_as(Q)?))
     }
 }
 
@@ -518,7 +515,7 @@ where
     T: ParseCookie,
 {
     fn from_request(req: &Request) -> Result<Self> {
-        Ok(Self(T::parse(C, req.cookie(C)?)?))
+        Ok(Self(req.cookie_as(C)?))
     }
 }
 
@@ -528,10 +525,7 @@ where
     T: ParseCookie,
 {
     fn from_request(req: &Request) -> Result<Self> {
-        Ok(Self(match req.cookie_optional(C) {
-            Some(value) => Some(T::parse(C, value)?),
-            None => None,
-        }))
+        Ok(Self(req.cookie_optional_as(C)?))
     }
 }
 
@@ -540,10 +534,7 @@ where
     T: Clone + 'static,
 {
     fn from_request(req: &Request) -> Result<Self> {
-        match req.state.get_cloned::<T>() {
-            Some(state) => Ok(Self(state)),
-            None => Err(Error::UnknownStateTypeError(type_name::<T>())),
-        }
+        Ok(Self(req.state_value()?))
     }
 }
 

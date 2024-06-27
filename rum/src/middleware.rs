@@ -4,7 +4,6 @@ use crate::request::Request;
 use crate::response::Response;
 use std::future::Future;
 use std::pin::Pin;
-use std::slice::{Iter, IterMut};
 use std::sync::Arc;
 use std::vec::IntoIter;
 
@@ -115,24 +114,6 @@ impl MiddlewareCollection {
     /// Adds a middleware function to the local route group and all sub-groups.
     pub fn add_recursive(&mut self, middleware: Middleware) {
         self.0.push(AppliedMiddleware::Recursive(middleware));
-    }
-}
-
-impl<'a> IntoIterator for &'a MiddlewareCollection {
-    type Item = &'a AppliedMiddleware;
-    type IntoIter = Iter<'a, AppliedMiddleware>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.iter()
-    }
-}
-
-impl<'a> IntoIterator for &'a mut MiddlewareCollection {
-    type Item = &'a mut AppliedMiddleware;
-    type IntoIter = IterMut<'a, AppliedMiddleware>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.iter_mut()
     }
 }
 

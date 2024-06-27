@@ -34,10 +34,23 @@ impl PathParamMap {
     {
         self.get(name).and_then(|value| T::parse(name, value))
     }
+}
 
-    /// Returns an iterator over all path parameters.
-    pub fn iter(&self) -> Iter<'_, String, String> {
-        self.into_iter()
+impl From<HashMap<String, String>> for PathParamMap {
+    fn from(value: HashMap<String, String>) -> Self {
+        Self(Arc::new(value))
+    }
+}
+
+impl<T> From<Option<T>> for PathParamMap
+where
+    T: Into<PathParamMap>,
+{
+    fn from(value: Option<T>) -> Self {
+        match value {
+            Some(path) => path.into(),
+            None => Self::default(),
+        }
     }
 }
 
@@ -47,6 +60,26 @@ impl<'a> IntoIterator for &'a PathParamMap {
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter()
+    }
+}
+
+impl FromIterator<(String, String)> for PathParamMap {
+    fn from_iter<T: IntoIterator<Item = (String, String)>>(iter: T) -> Self {
+        Self(Arc::new(iter.into_iter().collect()))
+    }
+}
+
+impl Deref for PathParamMap {
+    type Target = HashMap<String, String>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Borrow<HashMap<String, String>> for PathParamMap {
+    fn borrow(&self) -> &HashMap<String, String> {
+        &self.0
     }
 }
 

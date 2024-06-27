@@ -1,6 +1,6 @@
 #![feature(fn_traits)]
 
-use rum::error::{Error, Result};
+use rum::error::{Error, ErrorSource, Result};
 use rum::prelude::*;
 use rum::request::RequestInner;
 use rum::response::ResponseInner;
@@ -15,7 +15,7 @@ use std::io;
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::net::TcpListener;
 use tokio::spawn;
 use tokio::task::JoinHandle;
@@ -968,6 +968,9 @@ async fn test_request_methods() {
         let query_param_optional = req.query_param_optional("num").unwrap();
         assert_eq!(query_param_optional, "345");
 
+        let query_param_optional = req.query_param_optional("foo");
+        assert_eq!(query_param_optional, Some(""));
+
         let invalid_query_param_optional = req.query_param_optional("invalid");
         assert!(invalid_query_param_optional.is_none());
 
@@ -1118,6 +1121,7 @@ async fn test_extract_body_string() {
         let mut body_str = BodyString::from_request(&req).unwrap();
         assert_eq!(*body_str, "Hello, body string!");
         assert_inner_mut(&mut body_str, &"Hello, body string!".to_owned());
+        assert_eq!(Borrow::<str>::borrow(&body_str), "Hello, body string!");
         assert_eq!(body_str.into_inner(), "Hello, body string!");
 
         Response::new()
@@ -1301,6 +1305,12 @@ async fn test_extract_path_param_map() {
         assert_eq!(path_param_map.get_as::<i32>("num").unwrap(), 123);
         assert!(path_param_map.get("invalid").is_err());
         assert!(path_param_map.get_as::<i32>("invalid").is_err());
+        assert_inner(
+            &path_param_map,
+            &map! {
+                "num".to_owned() => "123".to_owned(),
+            },
+        );
 
         Response::new()
     }
@@ -1963,8 +1973,8 @@ async fn test_extract_next_fn() {
     assert_no_server_errors!(errors);
 }
 
-#[tokio::test]
-async fn test_route_path() {
+#[test]
+fn test_route_path() {
     assert_eq!(RoutePath::new().to_string(), "/");
     assert_eq!(RoutePath::from("").to_string(), "/");
     assert_eq!(RoutePath::from("/").to_string(), "/");
@@ -2127,8 +2137,8 @@ async fn test_route_path() {
     );
 }
 
-#[tokio::test]
-async fn test_route_path_matched() {
+#[test]
+fn test_route_path_matched() {
     assert_eq!(
         RoutePathMatched::from(RoutePathMatchedSegment::Static("test".to_owned())).join(
             RoutePathMatchedSegment::Wildcard("num".to_owned(), "/123".to_owned())
@@ -3501,6 +3511,10 @@ async fn test_response_cookie() {
                 SetCookie::new("test_cookie_2", "Goodbye, response cookie!")
                     .expire_after(Duration::from_secs(35792)),
             )
+            .cookie(
+                SetCookie::new("test_cookie_3", "foo bar baz")
+                    .expire_at(Instant::now() + Duration::from_millis(60500)),
+            )
     }
 
     let server = TestServer::new()
@@ -3518,7 +3532,8 @@ async fn test_response_cookie() {
             .collect::<Vec<_>>(),
         &[
             "test_cookie_1=Hello, response cookie!; HttpOnly",
-            "test_cookie_2=Goodbye, response cookie!; Max-Age=35792"
+            "test_cookie_2=Goodbye, response cookie!; Max-Age=35792",
+            "test_cookie_3=foo bar baz; Max-Age=60"
         ]
     );
 
@@ -3535,7 +3550,14 @@ async fn test_response_and() {
             .and(StatusCode::IM_A_TEAPOT)
             .and("This body will be overridden")
             .and("by this one")
-            .and(Response::new().header("Test-Header", ": )"))
+            .and(
+                Response::new()
+                    .header("Test-Header-1", "Hello!")
+                    .header("Test-Header-2", ": ("),
+            )
+            .and(Response::new().header("Test-Header-2", ": )"))
+            .and(Response::new().cookie(SetCookie::new("test_cookie_1", "abc")))
+            .and(Response::new().cookie(SetCookie::new("test_cookie_2", "xyz")))
     }
 
     let server = TestServer::new()
@@ -3546,7 +3568,27 @@ async fn test_response_and() {
 
     let res = server.get("/test", |req| req).await.unwrap();
     assert_eq!(res.status(), StatusCode::IM_A_TEAPOT);
-    assert_eq!(res.headers().get("Test-Header").unwrap(), ": )");
+    assert_eq!(
+        res.headers()
+            .get_all("Test-Header-1")
+            .into_iter()
+            .collect::<Vec<_>>(),
+        &["Hello!"]
+    );
+    assert_eq!(
+        res.headers()
+            .get_all("Test-Header-2")
+            .into_iter()
+            .collect::<Vec<_>>(),
+        &[": (", ": )"]
+    );
+    assert_eq!(
+        res.headers()
+            .get_all(http::header::SET_COOKIE)
+            .into_iter()
+            .collect::<Vec<_>>(),
+        &["test_cookie_1=abc", "test_cookie_2=xyz"]
+    );
     assert_eq!(res.text().await.unwrap(), "by this one");
 
     let errors = server.stop().await;
@@ -4637,4 +4679,157 @@ async fn test_inline_handler() {
 
     let errors = server.stop().await;
     assert_no_server_errors!(errors);
+}
+
+#[test]
+fn test_path_param_map_impls() {
+    let path_params = PathParamMap::from(None::<HashMap<String, String>>);
+    assert!(path_params.is_empty());
+
+    let path_params = PathParamMap::from(Some(map! {
+        "num".to_owned() => "123".to_owned(),
+        "name".to_owned() => "Will".to_owned(),
+    }));
+    assert_eq!(path_params.len(), 2);
+    assert_eq!(path_params.get_as::<i32>("num").unwrap(), 123);
+    assert_eq!(path_params.get("name").unwrap(), "Will");
+
+    let mut path_params_iter = (&path_params).into_iter();
+    assert!([
+        Some((&"num".to_owned(), &"123".to_owned())),
+        Some((&"name".to_owned(), &"Will".to_owned()))
+    ]
+    .contains(&path_params_iter.next()));
+    assert!([
+        Some((&"num".to_owned(), &"123".to_owned())),
+        Some((&"name".to_owned(), &"Will".to_owned()))
+    ]
+    .contains(&path_params_iter.next()));
+    assert_eq!(path_params_iter.next(), None);
+
+    let path_params_from_iter = path_params
+        .into_iter()
+        .map(|(k, v)| (k.to_owned(), v.to_owned()))
+        .collect::<PathParamMap>();
+    assert_eq!(path_params_from_iter, path_params);
+}
+
+#[test]
+fn test_query_param_map_impls() {
+    let query_params = QueryParamMap::from("http://localhost:3000/test?foo&&bar=baz&");
+    assert_eq!(
+        *query_params,
+        map! {
+            "foo".to_owned() => None,
+            "bar".to_owned() => Some("baz".to_owned()),
+        }
+    );
+
+    let query_params_from_string =
+        QueryParamMap::from("http://localhost:3000/test?foo&&bar=baz&".to_owned());
+    assert_eq!(query_params_from_string, query_params);
+
+    let query_params = QueryParamMap::from(None::<HashMap<String, Option<String>>>);
+    assert!(query_params.is_empty());
+
+    let query_params = QueryParamMap::from(Some(map! {
+        "num".to_owned() => Some("123".to_owned()),
+        "name".to_owned() => Some("Will".to_owned()),
+    }));
+    assert_eq!(query_params.len(), 2);
+    assert_eq!(query_params.get_as::<i32>("num").unwrap(), 123);
+    assert_eq!(query_params.get("name").unwrap(), "Will");
+
+    let mut query_params_iter = (&query_params).into_iter();
+    assert!([
+        Some((&"num".to_owned(), &Some("123".to_owned()))),
+        Some((&"name".to_owned(), &Some("Will".to_owned())))
+    ]
+    .contains(&query_params_iter.next()));
+    assert!([
+        Some((&"num".to_owned(), &Some("123".to_owned()))),
+        Some((&"name".to_owned(), &Some("Will".to_owned())))
+    ]
+    .contains(&query_params_iter.next()));
+    assert_eq!(query_params_iter.next(), None);
+
+    let query_params_from_iter = query_params
+        .into_iter()
+        .map(|(k, v)| (k.to_owned(), v.to_owned()))
+        .collect::<QueryParamMap>();
+    assert_eq!(query_params_from_iter, query_params);
+}
+
+#[test]
+fn test_header_map_impls() {
+    let headers = HeaderMap::from(None::<HashMap<String, Vec<String>>>);
+    assert!(headers.is_empty());
+
+    let headers = HeaderMap::from(Some(map! {
+        "num".to_owned() => vec!["123".to_owned()],
+        "name".to_owned() => vec!["Will".to_owned()],
+    }));
+    assert_eq!(headers.len(), 2);
+    assert_eq!(headers.get_as::<i32>("num").unwrap(), vec![123]);
+    assert_eq!(headers.get("name").unwrap(), vec!["Will"]);
+
+    let mut headers_iter = (&headers).into_iter();
+    assert!([
+        Some((&"num".to_owned(), &vec!["123".to_owned()])),
+        Some((&"name".to_owned(), &vec!["Will".to_owned()]))
+    ]
+    .contains(&headers_iter.next()));
+    assert!([
+        Some((&"num".to_owned(), &vec!["123".to_owned()])),
+        Some((&"name".to_owned(), &vec!["Will".to_owned()]))
+    ]
+    .contains(&headers_iter.next()));
+    assert_eq!(headers_iter.next(), None);
+
+    let headers_from_iter = headers
+        .into_iter()
+        .map(|(k, v)| (k.to_owned(), v.to_owned()))
+        .collect::<HeaderMap>();
+    assert_eq!(headers_from_iter, headers);
+}
+
+#[test]
+fn test_cookie_map_impls() {
+    let cookies = CookieMap::from(None::<HashMap<String, String>>);
+    assert!(cookies.is_empty());
+
+    let cookies = CookieMap::from(Some(map! {
+        "num".to_owned() => "123".to_owned(),
+        "name".to_owned() => "Will".to_owned(),
+    }));
+    assert_eq!(cookies.len(), 2);
+    assert_eq!(cookies.get_as::<i32>("num").unwrap(), 123);
+    assert_eq!(cookies.get("name").unwrap(), "Will");
+
+    let mut cookies_iter = (&cookies).into_iter();
+    assert!([
+        Some((&"num".to_owned(), &"123".to_owned())),
+        Some((&"name".to_owned(), &"Will".to_owned()))
+    ]
+    .contains(&cookies_iter.next()));
+    assert!([
+        Some((&"num".to_owned(), &"123".to_owned())),
+        Some((&"name".to_owned(), &"Will".to_owned()))
+    ]
+    .contains(&cookies_iter.next()));
+    assert_eq!(cookies_iter.next(), None);
+
+    let cookies_from_iter = cookies
+        .into_iter()
+        .map(|(k, v)| (k.to_owned(), v.to_owned()))
+        .collect::<CookieMap>();
+    assert_eq!(cookies_from_iter, cookies);
+}
+
+#[test]
+fn test_error_source() {
+    assert!(ErrorSource::Client.is_client());
+    assert!(!ErrorSource::Client.is_server());
+    assert!(!ErrorSource::Server.is_client());
+    assert!(ErrorSource::Server.is_server());
 }

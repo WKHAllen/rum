@@ -80,8 +80,10 @@ impl From<&str> for QueryParamMap {
                     .and_then(|value| urlencoding::decode(value).ok());
 
                 match (name, value) {
-                    (Some(name), Some(value)) => Some((name.to_owned(), Some(value.into_owned()))),
-                    (Some(name), None) => Some((name.to_owned(), None)),
+                    (Some(name), Some(value)) if !name.is_empty() => {
+                        Some((name.to_owned(), Some(value.into_owned())))
+                    }
+                    (Some(name), None) if !name.is_empty() => Some((name.to_owned(), None)),
                     _ => None,
                 }
             })
