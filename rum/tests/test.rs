@@ -4,7 +4,9 @@ use rum::error::{Error, ErrorSource, Result};
 use rum::prelude::*;
 use rum::request::RequestInner;
 use rum::response::ResponseInner;
-use rum::routing::{RoutePathMatchedSegment, RoutePathSegment};
+use rum::routing::{
+    CompleteRouteHandler, RouteHandler, RouteLevel, RoutePathMatchedSegment, RoutePathSegment,
+};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::borrow::{Borrow, BorrowMut};
@@ -56,6 +58,20 @@ impl TestServer {
         let port = listener.local_addr()?.port();
 
         let serve_task = spawn(async move { server.serve_with(listener).await });
+
+        Ok(TestServerHandle {
+            port,
+            serve_task,
+            shutdown_sender: self.shutdown_sender,
+            error_receiver: self.error_receiver,
+            client: reqwest::Client::new(),
+        })
+    }
+
+    pub async fn start_on(self, port: u16) -> io::Result<TestServerHandle> {
+        let server = self.server;
+
+        let serve_task = spawn(async move { server.serve(("127.0.0.1", port)).await.unwrap() });
 
         Ok(TestServerHandle {
             port,
@@ -1032,6 +1048,9 @@ async fn test_request_methods() {
             .unwrap();
         assert_eq!(local_state_value, TestLocalState { num: 789 });
 
+        let explicit_extract = req.extract::<NextFn>();
+        assert!(explicit_extract.is_err());
+
         Response::new()
     }
 
@@ -1521,6 +1540,9 @@ async fn test_extract_query_param_optional() {
         let query_param_invalid = QueryParamOptional::<"invalid", i32>::from_request(&req).unwrap();
         assert_eq!(*query_param_invalid, None);
 
+        let query_param_parse_error = QueryParamOptional::<"num", bool>::from_request(&req);
+        assert!(query_param_parse_error.is_err());
+
         Response::new()
     }
 
@@ -1690,6 +1712,9 @@ async fn test_extract_header_optional() {
         let header_invalid = HeaderOptional::<"invalid", i32>::from_request(&req).unwrap();
         assert_eq!(*header_invalid, None);
 
+        let header_parse_error = HeaderOptional::<"num", bool>::from_request(&req);
+        assert!(header_parse_error.is_err());
+
         Response::new()
     }
 
@@ -1832,6 +1857,9 @@ async fn test_extract_cookie_optional() {
 
         let cookie_invalid = CookieOptional::<"invalid", i32>::from_request(&req).unwrap();
         assert_eq!(*cookie_invalid, None);
+
+        let cookie_parse_error = CookieOptional::<"num", bool>::from_request(&req);
+        assert!(cookie_parse_error.is_err());
 
         Response::new()
     }
@@ -1984,6 +2012,18 @@ fn test_route_path() {
     assert_eq!(RoutePath::from("test/123").to_string(), "/test/123");
     assert_eq!(RoutePath::from("/test/123").to_string(), "/test/123");
     assert_eq!(RoutePath::from("/test/123/").to_string(), "/test/123");
+    assert_eq!(
+        RoutePath::from("/test/123/".to_owned()).to_string(),
+        "/test/123"
+    );
+    assert_eq!(
+        RoutePath::from([
+            RoutePathSegment::Static("test".to_owned()),
+            RoutePathSegment::Static("123".to_owned())
+        ])
+        .to_string(),
+        "/test/123"
+    );
 
     assert_eq!(
         RoutePath::from("/test").join("/123").to_string(),
@@ -2134,6 +2174,36 @@ fn test_route_path() {
             RoutePathSegment::Static("foo".to_owned()),
             RoutePath::from("/bar/baz")
         ))
+    );
+
+    assert_eq!(
+        RoutePath::from_iter((&RoutePath::from("/foo/bar/baz")).into_iter()),
+        RoutePath::from("/foo/bar/baz")
+    );
+    assert_eq!(
+        RoutePath::from_iter(
+            [
+                RoutePathSegment::Static("foo".to_owned()),
+                RoutePathSegment::Static("bar".to_owned()),
+                RoutePathSegment::Static("baz".to_owned())
+            ]
+            .into_iter()
+        ),
+        RoutePath::from("/foo/bar/baz")
+    );
+}
+
+#[test]
+fn test_route_path_segment() {
+    assert_eq!(RoutePathSegment::Static("foo".to_owned()).name(), "foo");
+    assert_eq!(RoutePathSegment::Wildcard("bar".to_owned()).name(), "bar");
+    assert_eq!(
+        RoutePathSegment::Static("foo".to_owned()).to_string(),
+        "foo"
+    );
+    assert_eq!(
+        RoutePathSegment::Wildcard("bar".to_owned()).to_string(),
+        "{bar}"
     );
 }
 
@@ -2385,6 +2455,89 @@ fn test_route_path_matched() {
                 RoutePathMatchedSegment::Static("baz".to_owned()),
             ])
         ))
+    );
+
+    assert_eq!(
+        RoutePathMatched::from_iter(
+            (&RoutePathMatched::from([
+                RoutePathMatchedSegment::Static("foo".to_owned()),
+                RoutePathMatchedSegment::Static("bar".to_owned()),
+                RoutePathMatchedSegment::Static("baz".to_owned()),
+            ]))
+                .into_iter()
+        ),
+        RoutePathMatched::from([
+            RoutePathMatchedSegment::Static("foo".to_owned()),
+            RoutePathMatchedSegment::Static("bar".to_owned()),
+            RoutePathMatchedSegment::Static("baz".to_owned()),
+        ])
+    );
+    assert_eq!(
+        RoutePathMatched::from_iter(
+            [
+                RoutePathMatchedSegment::Static("foo".to_owned()),
+                RoutePathMatchedSegment::Static("bar".to_owned()),
+                RoutePathMatchedSegment::Static("baz".to_owned())
+            ]
+            .into_iter()
+        ),
+        RoutePathMatched::from([
+            RoutePathMatchedSegment::Static("foo".to_owned()),
+            RoutePathMatchedSegment::Static("bar".to_owned()),
+            RoutePathMatchedSegment::Static("baz".to_owned()),
+        ])
+    );
+}
+
+#[test]
+fn test_route_path_string() {
+    assert_eq!(
+        *RoutePathString::from(RoutePath::from("/test/123")),
+        "/test/123".to_owned()
+    );
+    assert_eq!(
+        *RoutePathString::from(RoutePath::from("/foo/bar/baz")),
+        "/foo/bar/baz".to_owned()
+    );
+}
+
+#[test]
+fn test_complete_route_handler() {
+    _ = CompleteRouteHandler::from(RouteHandler::from(|_req| async move { Response::new() }));
+}
+
+#[test]
+fn test_route_level() {
+    assert_eq!(
+        RouteLevel::from(
+            RouteGroup::new("/")
+                .get("/test", |_req| async move { Response::new() })
+                .route_group(
+                    RouteGroup::new("/foo")
+                        .get("/bar", |_req| async move { Response::new() })
+                        .post("/baz", |_req| async move { Response::new() }),
+                ),
+        )
+        .into_iter()
+        .map(|(method, route_path, _)| (method, route_path))
+        .collect::<HashSet<_>>(),
+        set!(
+            (Method::GET, RoutePath::from("/test")),
+            (Method::GET, RoutePath::from("/foo/bar")),
+            (Method::POST, RoutePath::from("/foo/baz"))
+        )
+    );
+
+    assert_eq!(
+        RouteLevel::from(
+            RouteGroup::new("/").route_group(RouteGroup::new("/foo").route_group(
+                RouteGroup::new("/{bar}").get("/baz", |_req| async move { Response::new() })
+            ))
+        )
+        .into_iter()
+        .map(|(method, route_path, _)| (method, route_path))
+        .collect::<HashSet<_>>(),
+        set!((Method::GET, RoutePath::from("/foo/{bar}/baz")))
     );
 }
 
@@ -3947,6 +4100,18 @@ async fn test_http_methods() {
                 .options("/test", handler_options)
                 .trace("/test", handler_trace)
                 .patch("/test", handler_patch)
+                .route_group(
+                    RouteGroup::new("/group")
+                        .get("/test", handler_get)
+                        .head("/test", handler_head)
+                        .post("/test", handler_post)
+                        .put("/test", handler_put)
+                        .delete("/test", handler_delete)
+                        .connect("/test", handler_connect)
+                        .options("/test", handler_options)
+                        .trace("/test", handler_trace)
+                        .patch("/test", handler_patch),
+                )
         })
         .start()
         .await
@@ -3985,6 +4150,42 @@ async fn test_http_methods() {
     assert_eq!(res.text().await.unwrap(), "Hello, TRACE method!");
 
     let res = server.patch("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "Hello, PATCH method!");
+
+    let res = server.get("/group/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "Hello, GET method!");
+
+    let res = server.head("/group/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::IM_A_TEAPOT);
+
+    let res = server.post("/group/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "Hello, POST method!");
+
+    let res = server.put("/group/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "Hello, PUT method!");
+
+    let res = server.delete("/group/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "Hello, DELETE method!");
+
+    // CONNECT is not easily testable
+    // let res = server.connect("/group/test", |req| req).await.unwrap();
+    // assert_eq!(res.status(), StatusCode::OK);
+    // assert_eq!(res.text().await.unwrap(), "Hello, CONNECT method!");
+
+    let res = server.options("/group/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "Hello, OPTIONS method!");
+
+    let res = server.trace("/group/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "Hello, TRACE method!");
+
+    let res = server.patch("/group/test", |req| req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
     assert_eq!(res.text().await.unwrap(), "Hello, PATCH method!");
 
@@ -4366,6 +4567,11 @@ async fn test_middleware_order() {
 #[tokio::test]
 async fn test_local_middleware() {
     #[middleware]
+    async fn server_middleware() {
+        unreachable!()
+    }
+
+    #[middleware]
     async fn local_middleware(req: Request, next: NextFn) -> Response {
         next(req).await.header("Local-Middleware", "1")
     }
@@ -4387,7 +4593,7 @@ async fn test_local_middleware() {
 
     let server = TestServer::new()
         .config(|server| {
-            server.route_group(
+            server.with_local_middleware(server_middleware).route_group(
                 RouteGroup::new("/test")
                     .with_local_middleware(local_middleware)
                     .with_middleware(recursive_middleware)
@@ -4832,4 +5038,177 @@ fn test_error_source() {
     assert!(!ErrorSource::Client.is_server());
     assert!(!ErrorSource::Server.is_client());
     assert!(ErrorSource::Server.is_server());
+}
+
+#[tokio::test]
+async fn test_non_ascii_header() {
+    #[handler]
+    async fn non_ascii_header_handler(headers: HeaderMap) {
+        assert_eq!(
+            headers
+                .get("valid")
+                .ok()
+                .map(|h| h.iter().map(String::as_str).collect::<Vec<_>>()),
+            Some(vec!["hello"])
+        );
+        assert_eq!(headers.get("invalid").ok(), None);
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", non_ascii_header_handler))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server
+        .get("/test", |req| {
+            req.header("valid", "hello").header("invalid", "\u{5F41}")
+        })
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_body_str_error() {
+    #[handler]
+    async fn body_str_error_handler(req: Request) {
+        assert!(req.body_str().is_err());
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", body_str_error_handler))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server
+        .get("/test", |req| req.body(vec![0, 159, 146, 150]))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_body_json_error() {
+    #[handler]
+    async fn body_json_error_handler(req: Request) {
+        assert!(req.body_json::<serde_json::Value>().is_err());
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", body_json_error_handler))
+        .start()
+        .await
+        .unwrap();
+
+    let res = server
+        .get("/test", |req| req.body("invalid json"))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[tokio::test]
+async fn test_no_content_type() {
+    #[handler]
+    async fn no_content_type_text(_: BodyString) {}
+
+    #[handler]
+    async fn no_content_type_json(_: Json<serde_json::Value>) {}
+
+    let server = TestServer::new()
+        .config(|server| {
+            server
+                .get("/test/text", no_content_type_text)
+                .get("/test/json", no_content_type_json)
+        })
+        .start()
+        .await
+        .unwrap();
+
+    let res = server.get("/test/text", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+
+    let res = server.get("/test/json", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
+}
+
+#[test]
+fn test_error_response() {
+    assert!(matches!(Response::new(), Response::Ok(_)));
+    assert!(matches!(
+        Response::new().and(Response::new_error(Error::NoNextFunction)),
+        Response::Ok(_)
+    ));
+    assert!(matches!(
+        Response::new_error(Error::NoNextFunction).and(Response::new()),
+        Response::Err(_)
+    ));
+    assert!(matches!(
+        Response::new_error(Error::NoNextFunction).body_or("useless body"),
+        Response::Err(_)
+    ));
+    assert!(matches!(
+        Response::new_error(Error::NoNextFunction).body_json("another useless body"),
+        Response::Err(_)
+    ));
+}
+
+#[tokio::test]
+async fn test_error_report_stream() {
+    let (error_sender, mut error_receiver) = error_report_stream();
+
+    error_sender.report(Arc::new(Error::NotFound));
+    error_sender.report(Arc::new(Error::UnsupportedMediaType));
+    error_sender.report(Arc::new(Error::NoNextFunction));
+    error_sender.close();
+
+    assert!(matches!(
+        error_receiver.next().await.as_deref(),
+        Some(Error::NotFound)
+    ));
+    assert!(matches!(
+        error_receiver.next().await.as_deref(),
+        Some(Error::UnsupportedMediaType)
+    ));
+    assert!(matches!(
+        error_receiver.next().await.as_deref(),
+        Some(Error::NoNextFunction)
+    ));
+    assert!(error_receiver.next().await.is_none());
+    assert!(error_receiver.next().await.is_none());
+}
+
+#[tokio::test]
+async fn test_serve_with_address() {
+    #[handler]
+    async fn final_handler() -> &'static str {
+        "Success"
+    }
+
+    let server = TestServer::new()
+        .config(|server| server.get("/test", final_handler))
+        .start_on(3000)
+        .await
+        .unwrap();
+
+    let res = server.get("/test", |req| req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.text().await.unwrap(), "Success");
+
+    let errors = server.stop().await;
+    assert_no_server_errors!(errors);
 }
